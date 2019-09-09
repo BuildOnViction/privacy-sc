@@ -1,6 +1,10 @@
 pragma solidity ^0.5.0;
 import {Secp256k1} from "./Secp256k1.sol";
+import "./SafeMath.sol";
+import "../../maxbet2/maxbet/src/contracts/full.sol";
+
 contract PrivacyCT {
+    using SafeMath for uint256;
     struct CompressPubKey {
         uint8 yBit;
         uint256 x;
@@ -13,6 +17,15 @@ contract PrivacyCT {
         uint256 mask;   //encoded blinding factor
         CompressPubKey txPub;
     }
+
+    event NewUTXO(uint256 _commitmentX,
+                    uint8 _commitmentYBit,
+                    uint256 _pubkeyX,
+                    uint8 _pubkeyYBit,
+                    uint256 _amount,
+                    uint256 _mask,
+                    uint256 _txPubX,
+                    uint8 _txPubYBit);
 
     UTXO[] utxos;
     mapping(uint256 => bool) public spentUTXOs;
@@ -29,6 +42,11 @@ contract PrivacyCT {
             mask: uint256(0),
             txPub: CompressPubKey(0, 0))
         );
+        UTXO storage lastUTXO = utxos[utxos.length.sub(1)];
+        emit NewUTXO(lastUTXO.commitment.x, lastUTXO.commitment.yBit,
+                    lastUTXO.pubkey.x, lastUTXO.pubkey.yBit,
+                    lastUTXO.amount, lastUTXO.mask,
+                    lastUTXO.txPub.x, lastUTXO.txPub.yBit);
     }
     //function privateSend only contain the proof
     //The proof contains pretty much stuffs
@@ -90,6 +108,10 @@ contract PrivacyCT {
                 mask: _masks[i],
                 txPub: CompressPubKey(yBitTxPub, xTxPub))
             );
+            emit NewUTXO(x, yBit,
+                        xPub, yBitPub,
+                        _amounts[i], _masks[i],
+                        xTxPub, yBitTxPub);
         }
     }
 

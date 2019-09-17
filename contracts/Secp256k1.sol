@@ -14,13 +14,16 @@ import {ECCMath} from "./ECCMath.sol";
 library Secp256k1 {
 
     // TODO separate curve from crypto primitives?
-
+    uint256 constant n = 0x30644E72E131A029B85045B68181585D97816A916871CA8D3C208C16D87CFD47;
     // Field size
     uint constant pp = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F;
 
     // Base point (generator) G
     uint constant Gx = 0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798;
     uint constant Gy = 0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8;
+
+    uint constant Hx = 0x50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0;
+    uint constant Hy = 0x31d3c6863973926e049e637cb1b5f40a36dac28af1766968c30c2313f3a38904;
 
     // Order of G
     uint constant nn = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141;
@@ -36,7 +39,7 @@ library Secp256k1 {
     // uint constant beta = "0x7ae96a2b657c07106e64479eac3434e99cf0497512f58995c1396c28719501ee";
 
     /// @dev See Curve.onCurve
-    function onCurve(uint[2] P) internal constant returns (bool) {
+    function onCurve(uint[2] memory P) internal view returns (bool) {
         uint p = pp;
         if (0 == P[0] || P[0] == p || 0 == P[1] || P[1] == p)
             return false;
@@ -45,13 +48,26 @@ library Secp256k1 {
         return LHS == RHS;
     }
 
+    function onCurveXY(uint X, uint Y) internal view returns (bool) {
+        uint[2] memory P;
+        P[0] = X;
+        P[1] = Y;
+        return onCurve(P);
+    }
+
+    function onCurveCompress(uint8 yBit, uint x) internal view returns(bool) {
+        uint[2] memory _decompressed = decompress(yBit, x);
+        (uint8 _yBit, uint _x) = compress(_decompressed);
+        return (_yBit == yBit && _x == x);
+    }
+
     /// @dev See Curve.isPubKey
-    function isPubKey(uint[2] memory P) internal constant returns (bool isPK) {
+    function isPubKey(uint[2] memory P) internal view returns (bool isPK) {
         isPK = onCurve(P);
     }
 
     /// @dev See Curve.validateSignature
-    function validateSignature(bytes32 message, uint[2] rs, uint[2] Q) internal constant returns (bool) {
+    function validateSignature(uint message, uint[2] rs, uint[2] Q) internal view returns (bool) {
         uint n = nn;
         uint p = pp;
         if(rs[0] == 0 || rs[0] >= n || rs[1] == 0 || rs[1] > lowSmax)
@@ -60,7 +76,7 @@ library Secp256k1 {
             return false;
 
         uint sInv = ECCMath.invmod(rs[1], n);
-        uint[3] memory u1G = _mul(mulmod(uint(message), sInv, n), [Gx, Gy]);
+        uint[3] memory u1G = _mul(mulmod(message, sInv, n), [Gx, Gy]);
         uint[3] memory u2Q = _mul(mulmod(rs[0], sInv, n), Q);
         uint[3] memory P = _add(u1G, u2Q);
 
@@ -72,31 +88,92 @@ library Secp256k1 {
         return Px % n == rs[0];
     }
 
+    function pedersenCommitment(uint256 _mask, uint256 _val) internal view returns (uint8 yBit, uint x) {
+        uint[2] memory H;
+        uint[2] memory G;
+        H[0] = Hx;
+        H[1] = Hy;
+        G[0] = Gx;
+        G[1] = Gy;
+        uint[3] memory retH = _mul(_val, H);
+        uint[3] memory retG = _mul(_mask, G);
+        retH = _add(retH, retG);
+        (uint _x, uint _y) = toAffinePoint(retH[0], retH[1], retH[2]);
+        (yBit, x) = compressXY(_x, _y);
+    }
+
+    function pedersenCommitmentDecompress(uint256 _mask, uint256 _val) internal view returns (uint8 yBit, uint x) {
+        uint[2] memory H;
+        uint[2] memory G;
+        H[0] = Hx;
+        H[1] = Hy;
+        G[0] = Gx;
+        G[1] = Gy;
+        uint[3] memory retH = _mul(_val, H);
+        uint[3] memory retG = _mul(_mask, G);
+        retH = _add(retH, retG);
+        (uint _x, uint _y) = toAffinePoint(retH[0], retH[1], retH[2]);
+        (yBit, x) = compressXY(_x, _y);
+    }
+
+    function mulWithH(uint256 val) internal view returns (uint8 yBit, uint x) {
+        uint[2] memory H;
+        H[0] = Hx;
+        H[1] = Hy;
+        uint[3] memory ret = _mul(val, H);
+        (uint _x, uint _y) = toAffinePoint(ret[0], ret[1], ret[2]);
+        (yBit, x) = compressXY(_x, _y);
+    }
+
     /// @dev See Curve.compress
-    function compress(uint[2] P) internal constant returns (uint8 yBit, uint x) {
+    function compress(uint[2] memory P) internal view returns (uint8 yBit, uint x) {
+        assert(P.length == 2);
         x = P[0];
         yBit = P[1] & 1 == 1 ? 1 : 0;
     }
 
+    function compressXY(uint _x, uint _y) internal view returns (uint8 yBit, uint x) {
+        x = _x;
+        yBit = _y & 1 == 1 ? 1 : 0;
+    }
+
     /// @dev See Curve.decompress
-    function decompress(uint8 yBit, uint x) internal constant returns (uint[2] P) {
+    function decompress(uint8 yBit, uint x) internal view returns (uint[2] memory P) {
         uint p = pp;
-        var y2 = addmod(mulmod(x, mulmod(x, x, p), p), 7, p);
-        var y_ = ECCMath.expmod(y2, (p + 1) / 4, p);
+        uint y2 = addmod(mulmod(x, mulmod(x, x, p), p), 7, p);
+        uint y_ = ECCMath.expmod(y2, (p + 1) / 4, p);
         uint cmp = yBit ^ y_ & 1;
         P[0] = x;
         P[1] = (cmp == 0) ? y_ : p - y_;
     }
 
     // Transform from affine to projective coordinates
-    function toProjectivePoint(uint256 x0, uint256 y0) public pure
-    returns(uint256 x1, uint256 y1, uint256 z1)
+    function toProjectivePoint(uint256 x0, uint256 y0) public constant returns(uint256, uint256, uint256)
     {
-        z1 = addmod(0, 1, n);
-        x1 = mulmod(x0, z1, n);
-        y1 = mulmod(y0, z1, n);
+        uint256 z1 = addmod(0, 1, n);
+        uint256 x1 = mulmod(x0, z1, n);
+        uint256 y1 = mulmod(y0, z1, n);
+        return (x1,y1,z1);
     }
 
+    // Returns the inverse in the field of modulo n
+    function inverse(uint256 num) public pure
+    returns(uint256 invNum)
+    {
+        uint256 t = 0;
+        uint256 newT = 1;
+        uint256 r = n;
+        uint256 newR = num;
+        uint256 q;
+        while (newR != 0) {
+            q = r / newR;
+
+            (t, newT) = (newT, addmod(t, (n - mulmod(q, newT,n)), n));
+            (r, newR) = (newR, r - q * newR );
+        }
+
+        invNum = t;
+    }
 
     // Transform from projective to affine coordinates
     function toAffinePoint(uint256 x0, uint256 y0, uint256 z0) public pure
@@ -108,22 +185,10 @@ library Secp256k1 {
         y1 = mulmod(y0, z0Inv, n);
     }
 
-    // Add two elliptic curve points (affine coordinates)
-    function add(uint256 x0, uint256 y0,
-        uint256 x1, uint256 y1) public pure
-    returns(uint256, uint256)
-    {
-        uint256 z0;
-        uint256[3] memory P = [x0, y0, 1];
-        uint256[3] memory Q = [x1, y1, 1];
-        (x0, y0, z0) = _add(P, Q);
-        return toAffinePoint(x0, y0, z0);
-    }
-
     // Point addition, P + Q
     // inData: Px, Py, Pz, Qx, Qy, Qz
     // outData: Rx, Ry, Rz
-    function _add(uint[3] memory P, uint[3] memory Q) internal constant returns (uint[3] memory R) {
+    function _add(uint[3] memory P, uint[3] memory Q) internal view returns (uint[3] memory R) {
         if(P[2] == 0)
             return Q;
         if(Q[2] == 0)
@@ -135,10 +200,10 @@ library Secp256k1 {
         zs[2] = mulmod(Q[2], Q[2], p);
         zs[3] = mulmod(Q[2], zs[2], p);
         uint[4] memory us = [
-            mulmod(P[0], zs[2], p),
-            mulmod(P[1], zs[3], p),
-            mulmod(Q[0], zs[0], p),
-            mulmod(Q[1], zs[1], p)
+        mulmod(P[0], zs[2], p),
+        mulmod(P[1], zs[3], p),
+        mulmod(Q[0], zs[0], p),
+        mulmod(Q[1], zs[1], p)
         ]; // Pu, Ps, Qu, Qs
         if (us[0] == us[2]) {
             if (us[1] != us[3])
@@ -159,10 +224,22 @@ library Secp256k1 {
         R[2] = mulmod(h, mulmod(P[2], Q[2], p), p);
     }
 
+    // Add two elliptic curve points (affine coordinates)
+    function add(uint256 x0, uint256 y0,
+        uint256 x1, uint256 y1) public view
+    returns(uint256, uint256)
+    {
+        uint256 z0;
+        uint256[3] memory P = [x0, y0, 1];
+        uint256[3] memory Q = [x1, y1, 1];
+        uint256[3] memory R = _add(P, Q);
+        return toAffinePoint(x0, y0, z0);
+    }
+
     // Point addition, P + Q. P Jacobian, Q affine.
     // inData: Px, Py, Pz, Qx, Qy
     // outData: Rx, Ry, Rz
-    function _addMixed(uint[3] memory P, uint[2] memory Q) internal constant returns (uint[3] memory R) {
+    function _addMixed(uint[3] memory P, uint[2] memory Q) internal view returns (uint[3] memory R) {
         if(P[2] == 0)
             return [Q[0], Q[1], 1];
         if(Q[1] == 0)
@@ -172,10 +249,10 @@ library Secp256k1 {
         zs[0] = mulmod(P[2], P[2], p);
         zs[1] = mulmod(P[2], zs[0], p);
         uint[4] memory us = [
-            P[0],
-            P[1],
-            mulmod(Q[0], zs[0], p),
-            mulmod(Q[1], zs[1], p)
+        P[0],
+        P[1],
+        mulmod(Q[0], zs[0], p),
+        mulmod(Q[1], zs[1], p)
         ]; // Pu, Ps, Qu, Qs
         if (us[0] == us[2]) {
             if (us[1] != us[3]) {
@@ -202,7 +279,7 @@ library Secp256k1 {
     }
 
     // Same as addMixed but params are different and mutates P.
-    function _addMixedM(uint[3] memory P, uint[2] memory Q) internal constant {
+    function _addMixedM(uint[3] memory P, uint[2] memory Q) internal view {
         if(P[1] == 0) {
             P[0] = Q[0];
             P[1] = Q[1];
@@ -216,10 +293,10 @@ library Secp256k1 {
         zs[0] = mulmod(P[2], P[2], p);
         zs[1] = mulmod(P[2], zs[0], p);
         uint[4] memory us = [
-            P[0],
-            P[1],
-            mulmod(Q[0], zs[0], p),
-            mulmod(Q[1], zs[1], p)
+        P[0],
+        P[1],
+        mulmod(Q[0], zs[0], p),
+        mulmod(Q[1], zs[1], p)
         ]; // Pu, Ps, Qu, Qs
         if (us[0] == us[2]) {
             if (us[1] != us[3]) {
@@ -248,7 +325,7 @@ library Secp256k1 {
     // Point doubling, 2*P
     // Params: Px, Py, Pz
     // Not concerned about the 1 extra mulmod.
-    function _double(uint[3] memory P) internal constant returns (uint[3] memory Q) {
+    function _double(uint[3] memory P) internal view returns (uint[3] memory Q) {
         uint p = pp;
         if (P[2] == 0)
             return;
@@ -264,7 +341,7 @@ library Secp256k1 {
     }
 
     // Same as double but mutates P and is internal only.
-    function _doubleM(uint[3] memory P) internal constant {
+    function _doubleM(uint[3] memory P) internal view {
         uint p = pp;
         if (P[2] == 0)
             return;
@@ -282,7 +359,7 @@ library Secp256k1 {
     // Multiplication dP. P affine, wNAF: w=5
     // Params: d, Px, Py
     // Output: Jacobian Q
-    function _mul(uint d, uint[2] memory P) internal constant returns (uint[3] memory Q) {
+    function _mul(uint d, uint[2] memory P) internal view returns (uint[3] memory Q) {
         uint p = pp;
         if (d == 0) // TODO
             return;
@@ -292,19 +369,19 @@ library Secp256k1 {
         // wNAF
         assembly
         {
-                let dm := 0
-                dwPtr := mload(0x40)
-                mstore(0x40, add(dwPtr, 512)) // Should lower this.
+            let dm := 0
+            dwPtr := mload(0x40)
+            mstore(0x40, add(dwPtr, 512)) // Should lower this.
             loop:
-                jumpi(loop_end, iszero(d))
-                jumpi(even, iszero(and(d, 1)))
-                dm := mod(d, 32)
-                mstore8(add(dwPtr, i), dm) // Don't store as signed - convert when reading.
-                d := add(sub(d, dm), mul(gt(dm, 16), 32))
+            jumpi(loop_end, iszero(d))
+            jumpi(even, iszero(and(d, 1)))
+            dm := mod(d, 32)
+            mstore8(add(dwPtr, i), dm) // Don't store as signed - convert when reading.
+            d := add(sub(d, dm), mul(gt(dm, 16), 32))
             even:
-                d := div(d, 2)
-                i := add(i, 1)
-                jump(loop)
+            d := div(d, 2)
+            i := add(i, 1)
+            jump(loop)
             loop_end:
         }
 

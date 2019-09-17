@@ -11,9 +11,9 @@ library ECCMath {
     /// @param a The number.
     /// @param p The mmodulus.
     /// @return x such that ax = 1 (mod p)
-    function invmod(uint a, uint p) internal constant returns (uint) {
+    function invmod(uint a, uint p) internal view returns (uint) {
         if (a == 0 || a == p || p == 0)
-            throw;
+            revert();
         if (a > p)
             a = a % p;
         int t1;
@@ -37,24 +37,24 @@ library ECCMath {
     /// @param e The exponent.
     /// @param m The modulus.
     /// @return x such that x = b**e (mod m)
-    function expmod(uint b, uint e, uint m) internal constant returns (uint r) {
+    function expmod(uint b, uint e, uint m) internal view returns (uint r) {
         if (b == 0)
             return 0;
         if (e == 0)
             return 1;
         if (m == 0)
-            throw;
+            revert();
         r = 1;
         uint bit = 2 ** 255;
         assembly {
             loop:
-                jumpi(end, iszero(bit))
-                r := mulmod(mulmod(r, r, m), exp(b, iszero(iszero(and(e, bit)))), m)
-                r := mulmod(mulmod(r, r, m), exp(b, iszero(iszero(and(e, div(bit, 2))))), m)
-                r := mulmod(mulmod(r, r, m), exp(b, iszero(iszero(and(e, div(bit, 4))))), m)
-                r := mulmod(mulmod(r, r, m), exp(b, iszero(iszero(and(e, div(bit, 8))))), m)
-                bit := div(bit, 16)
-                jump(loop)
+            jumpi(end, iszero(bit))
+            r := mulmod(mulmod(r, r, m), exp(b, iszero(iszero(and(e, bit)))), m)
+            r := mulmod(mulmod(r, r, m), exp(b, iszero(iszero(and(e, div(bit, 2))))), m)
+            r := mulmod(mulmod(r, r, m), exp(b, iszero(iszero(and(e, div(bit, 4))))), m)
+            r := mulmod(mulmod(r, r, m), exp(b, iszero(iszero(and(e, div(bit, 8))))), m)
+            bit := div(bit, 16)
+            jump(loop)
             end:
         }
     }
@@ -66,7 +66,7 @@ library ECCMath {
     /// @param z2Inv The square of zInv
     /// @param prime The prime modulus.
     /// @return (Px', Py', 1)
-    function toZ1(uint[3] memory P, uint zInv, uint z2Inv, uint prime) internal constant {
+    function toZ1(uint[3] memory P, uint zInv, uint z2Inv, uint prime) internal view {
         P[0] = mulmod(P[0], z2Inv, prime);
         P[1] = mulmod(P[1], mulmod(zInv, z2Inv, prime), prime);
         P[2] = 1;
@@ -77,7 +77,7 @@ library ECCMath {
     /// @param PJ The point.
     /// @param prime The prime modulus.
     /// @return (Px', Py', 1)
-    function toZ1(uint[3] PJ, uint prime) internal constant {
+    function toZ1(uint[3] memory PJ, uint prime) internal view {
         uint zInv = invmod(PJ[2], prime);
         uint zInv2 = mulmod(zInv, zInv, prime);
         PJ[0] = mulmod(PJ[0], zInv2, prime);

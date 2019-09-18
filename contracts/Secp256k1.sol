@@ -147,8 +147,18 @@ library Secp256k1 {
         P[1] = (cmp == 0) ? y_ : p - y_;
     }
 
+    /// @dev See Curve.decompress
+    function decompressXY(uint8 yBit, uint x) internal view returns (uint X, uint Y) {
+        uint p = pp;
+        uint y2 = addmod(mulmod(x, mulmod(x, x, p), p), 7, p);
+        uint y_ = ECCMath.expmod(y2, (p + 1) / 4, p);
+        uint cmp = yBit ^ y_ & 1;
+        X = x;
+        Y = (cmp == 0) ? y_ : p - y_;
+    }
+
     // Transform from affine to projective coordinates
-    function toProjectivePoint(uint256 x0, uint256 y0) public constant returns(uint256, uint256, uint256)
+    function toProjectivePoint(uint256 x0, uint256 y0) internal view returns(uint256, uint256, uint256)
     {
         uint256 z1 = addmod(0, 1, n);
         uint256 x1 = mulmod(x0, z1, n);
@@ -157,7 +167,7 @@ library Secp256k1 {
     }
 
     // Returns the inverse in the field of modulo n
-    function inverse(uint256 num) public pure
+    function inverse(uint256 num) internal view
     returns(uint256 invNum)
     {
         uint256 t = 0;
@@ -176,7 +186,7 @@ library Secp256k1 {
     }
 
     // Transform from projective to affine coordinates
-    function toAffinePoint(uint256 x0, uint256 y0, uint256 z0) public pure
+    function toAffinePoint(uint256 x0, uint256 y0, uint256 z0) internal view
     returns(uint256 x1, uint256 y1)
     {
         uint256 z0Inv;
@@ -226,7 +236,7 @@ library Secp256k1 {
 
     // Add two elliptic curve points (affine coordinates)
     function add(uint256 x0, uint256 y0,
-        uint256 x1, uint256 y1) public view
+        uint256 x1, uint256 y1) internal view
     returns(uint256, uint256)
     {
         uint256 z0;

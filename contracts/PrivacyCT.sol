@@ -34,13 +34,14 @@ contract PrivacyCT {
         uint256 mask;   //encoded mask
     }
 
-    event NewUTXO(uint256 _pubkeyX,
+    event NewUTXO(uint256 _commitmentX,
+            uint8 _commitmentYBit, 
+            uint256 _pubkeyX,
             uint8 _pubkeyYBit,
-            uint256 _amount,
+            uint256[2] _amount,
             uint256 _txPubX,
             uint8 _txPubYBit,
-            uint256 _index,
-            uint256 _mask);
+            uint256 _index);
 
     UTXO[] public utxos;
     mapping(uint256 => bool) public spentUTXOs;
@@ -68,15 +69,16 @@ contract PrivacyCT {
         })
         );
         UTXO storage lastUTXO = utxos[utxos.length.sub(1)];
-        emit NewUTXO(
+        emit NewUTXO(lastUTXO.commitment.x,
+                    lastUTXO.commitment.yBit,
                     lastUTXO.pubkey.x, 
                     lastUTXO.pubkey.yBit, 
-                    lastUTXO.amount,
+                    [lastUTXO.amount, lastUTXO.mask],
                     lastUTXO.txPub.x, 
                     lastUTXO.txPub.yBit, 
-                    utxos.length.sub(1),
-                    lastUTXO.mask);
+                    utxos.length.sub(1));
     }
+    event Inputs(uint256[] _inputIDs);
     //function privateSend only contain the proof
     //The proof contains pretty much stuffs
     //Ring size rs: 1 byte => proof[0]
@@ -101,8 +103,8 @@ contract PrivacyCT {
             require(!spentUTXOs[_inputIDs[i]], "input already spent");
         }
 
-        require(_amounts.length == _outputs.length.div(6));
-
+        require(_amounts.length.div(2) == _outputs.length.div(6));
+        emit Inputs(_inputIDs);
         //compute sum of input
         (inputSum[0], inputSum[1]) = Secp256k1.decompressXY(utxos[_inputIDs[0]].commitment.yBit - 2, utxos[_inputIDs[0]].commitment.x);
         for (i = 1; i < _inputIDs.length; i++) {
@@ -120,24 +122,32 @@ contract PrivacyCT {
             outputSum[0] = _x;
             outputSum[1] = _y;
         }
+        emit InputSum(inputSum[0], inputSum[1]);
+        emit OutputSum(outputSum[0], outputSum[1]);
         require(inputSum[0] == outputSum[0] && inputSum[1] == outputSum[1]);
         //create output UTXOs
-        /*outputLength = _outputs.length.div(6);
+        outputLength = _outputs.length.div(6);
         for (i = 0; i < outputLength; i++) {
             (uint8 yBit, uint256 x) = Secp256k1.compressXY(_outputs[i * 2], _outputs[i * 2 + 1]);
             (uint8 yBitPub, uint256 xPub) = Secp256k1.compressXY(_outputs[outputLength*2 + i*2], _outputs[outputLength + i*2 + 1]);
-            (uint8 yBitTxPub, uint256 xTxPub) = Secp256k1.compressXY(_outputs[outputLength*3 + i*2], _outputs[outputLength*3 + i*2 + 1]);
+            (uint8 yBitTxPub, uint256 xTxPub) = Secp256k1.compressXY(_outputs[outputLength*4 + i*2], _outputs[outputLength*4 + i*2 + 1]);
             utxos.push(UTXO ({
                 commitment: CompressPubKey(yBit, x),
                 pubkey: CompressPubKey(yBitPub, xPub),
                 amount: _amounts[i],
-                txPub: CompressPubKey(yBitTxPub, xTxPub)})
+                txPub: CompressPubKey(yBitTxPub, xTxPub),
+                mask: _amounts[outputLength + i]
+            })
             );
-            emit NewUTXO(x, yBit,
-                xPub, yBitPub,
-                _amounts[i],
-                xTxPub, yBitTxPub, utxos.length - 1);
-        }*/
+            emit NewUTXO(x,
+                yBit,
+                xPub, 
+                yBitPub,
+                [_amounts[i], _amounts[outputLength + i]],
+                xTxPub, 
+                yBitTxPub, 
+                utxos.length - 1);
+        }
     }
     
     event InputSum(uint256 _in1, uint256 _in2);
@@ -196,14 +206,14 @@ contract PrivacyCT {
             txPub: CompressPubKey(utxos[_utxoIndex].txPub.yBit, utxos[_utxoIndex].txPub.x),
             mask: utxos[_utxoIndex].mask
         }));
-        emit NewUTXO(
+        emit NewUTXO(utxos[_utxoIndex].commitment.x,
+            utxos[_utxoIndex].commitment.yBit,
             utxos[_utxoIndex].pubkey.x, 
             utxos[_utxoIndex].pubkey.yBit,
-            _amount2,
+            [_amount2, utxos[_utxoIndex].mask],
             utxos[_utxoIndex].txPub.x, 
             utxos[_utxoIndex].txPub.yBit, 
-            utxos.length - 1,
-            utxos[_utxoIndex].mask);
+            utxos.length - 1);
     }
 
     function storeTxData(byte[] memory proof, bool parseOutput) private {

@@ -171,7 +171,7 @@ contract PrivacyCT {
         emit HashSign(hash);
         //require(Secp256k1.validateSignature(hash, temp2, inputSum), "signature is not valid");
         //send money to recipient
-        // require(recipient != address(0x0), "address not registered yet");
+        require(recipient != address(0x0), "address not registered yet");
         recipient.transfer(_amount1);
         spentUTXOs[_utxoIndex] = true;
         utxos[_utxoIndex].isSpent = true;

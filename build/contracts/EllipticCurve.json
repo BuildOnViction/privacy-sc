@@ -1,14 +1,14 @@
 {
   "contractName": "EllipticCurve",
   "abi": [],
-  "bytecode": "0x604c602c600b82828239805160001a60731460008114601c57601e565bfe5b5030600052607381538281f3fe73000000000000000000000000000000000000000030146080604052600080fdfea165627a7a7230582083c9f5d0f94a977ec3be5fab07b860f7f9c1ceb1c3d8b49cba296c56caeff6ec0029",
-  "deployedBytecode": "0x73000000000000000000000000000000000000000030146080604052600080fdfea165627a7a7230582083c9f5d0f94a977ec3be5fab07b860f7f9c1ceb1c3d8b49cba296c56caeff6ec0029",
+  "bytecode": "0x604c602c600b82828239805160001a60731460008114601c57601e565bfe5b5030600052607381538281f3fe73000000000000000000000000000000000000000030146080604052600080fdfea165627a7a72305820a3033955bb6ee803c6bc650c90ed0a21cb325062dab4142b5ef217c4d4ce5c920029",
+  "deployedBytecode": "0x73000000000000000000000000000000000000000030146080604052600080fdfea165627a7a72305820a3033955bb6ee803c6bc650c90ed0a21cb325062dab4142b5ef217c4d4ce5c920029",
   "sourceMap": "166:12431:0:-;;132:2:-1;166:7;155:9;146:7;137:37;252:7;246:14;243:1;238:23;232:4;229:33;270:1;265:20;;;;222:63;;265:20;274:9;222:63;;298:9;295:1;288:20;328:4;319:7;311:22;352:7;343;336:24",
   "deployedSourceMap": "166:12431:0:-;;;;;;;;",
   "source": "\npragma solidity 0.5.0;\n\n\n/**\n * @title Elliptic Curve Library\n * @dev Library providing arithmetic operations over elliptic curves.\n * @author Witnet Foundation\n */\nlibrary EllipticCurve {\n\n    /// @dev Modular euclidean inverse of a number (mod p).\n    /// @param _x The number\n    /// @param _pp The modulus\n    /// @return q such that x*q = 1 (mod _pp)\n    function invMod(uint256 _x, uint256 _pp) internal pure returns (uint256) {\n        if (_x == 0 || _x == _pp || _pp == 0) {\n            revert(\"Invalid number\");\n        }\n        uint256 q = 0;\n        uint256 newT = 1;\n        uint256 r = _pp;\n        uint256 newR = _x;\n        uint256 t;\n        while (newR != 0) {\n            t = r / newR;\n            (q, newT) = (newT, addmod(q, (_pp - mulmod(t, newT, _pp)), _pp));\n            (r, newR) = (newR, r - t * newR );\n        }\n\n        return q;\n    }\n\n    /// @dev Modular exponentiation, b^e % _pp.\n    /// Source: https://github.com/androlo/standard-contracts/blob/master/contracts/src/crypto/ECCMath.sol\n    /// @param _base base\n    /// @param _exp exponent\n    /// @param _pp modulus\n    /// @return r such that r = b**e (mod _pp)\n    function expMod(uint256 _base, uint256 _exp, uint256 _pp) internal pure returns (uint256) {\n        if (_base == 0)\n            return 0;\n        if (_exp == 0)\n            return 1;\n        if (_pp == 0)\n            revert(\"Modulus is zero\");\n        uint256 r = 1;\n        uint256 bit = 2 ** 255;\n\n        assembly {\n            for { } gt(bit, 0) { }{\n                r := mulmod(mulmod(r, r, _pp), exp(_base, iszero(iszero(and(_exp, bit)))), _pp)\n                r := mulmod(mulmod(r, r, _pp), exp(_base, iszero(iszero(and(_exp, div(bit, 2))))), _pp)\n                r := mulmod(mulmod(r, r, _pp), exp(_base, iszero(iszero(and(_exp, div(bit, 4))))), _pp)\n                r := mulmod(mulmod(r, r, _pp), exp(_base, iszero(iszero(and(_exp, div(bit, 8))))), _pp)\n                bit := div(bit, 16)\n            }\n        }\n\n        return r;\n    }\n\n    /// @dev Converts a point (x, y, z) expressed in Jacobian coordinates to affine coordinates (x', y', 1).\n    /// @param _x coordinate x\n    /// @param _y coordinate y\n    /// @param _z coordinate z\n    /// @param _pp the modulus\n    /// @return (x', y') affine coordinates\n    function toAffine(\n        uint256 _x,\n        uint256 _y,\n        uint256 _z,\n        uint256 _pp)\n    internal pure returns (uint256, uint256)\n    {\n        uint256 zInv = invMod(_z, _pp);\n        uint256 zInv2 = mulmod(zInv, zInv, _pp);\n        uint256 x2 = mulmod(_x, zInv2, _pp);\n        uint256 y2 = mulmod(_y, mulmod(zInv, zInv2, _pp), _pp);\n\n        return (x2, y2);\n    }\n\n    /// @dev Derives the y coordinate from a compressed-format point x.\n    /// @param _prefix parity byte (0x02 even, 0x03 odd)\n    /// @param _x coordinate x\n    /// @param _aa constant of curve\n    /// @param _bb constant of curve\n    /// @param _pp the modulus\n    /// @return y coordinate y\n    function deriveY(\n        uint8 _prefix,\n        uint256 _x,\n        uint256 _aa,\n        uint256 _bb,\n        uint256 _pp)\n    internal pure returns (uint256)\n    {\n        // x^3 + ax + b\n        uint256 y2 = addmod(mulmod(_x, mulmod(_x, _x, _pp), _pp), addmod(mulmod(_x, _aa, _pp), _bb, _pp), _pp);\n        y2 = expMod(y2, (_pp + 1) / 4, _pp);\n        // uint256 cmp = yBit ^ y_ & 1;\n        uint256 y = (y2 + _prefix) % 2 == 0 ? y2 : _pp - y2;\n\n        return y;\n    }\n\n    /// @dev Check whether point (x,y) is on curve defined by a, b, and _pp.\n    /// @param _x coordinate x of P1\n    /// @param _y coordinate y of P1\n    /// @param _aa constant of curve\n    /// @param _bb constant of curve\n    /// @param _pp the modulus\n    /// @return true if x,y in the curve, false else\n    function isOnCurve(\n        uint _x,\n        uint _y,\n        uint _aa,\n        uint _bb,\n        uint _pp)\n    internal pure returns (bool)\n    {\n        if (0 == _x || _x == _pp || 0 == _y || _y == _pp) {\n            return false;\n        }\n        // y^2\n        uint lhs = mulmod(_y, _y, _pp);\n        // x^3\n        uint rhs = mulmod(mulmod(_x, _x, _pp), _x, _pp);\n        if (_aa != 0) {\n            // x^3 + a*x\n            rhs = addmod(rhs, mulmod(_x, _aa, _pp), _pp);\n        }\n        if (_bb != 0) {\n            // x^3 + a*x + b\n            rhs = addmod(rhs, _bb, _pp);\n        }\n\n        return lhs == rhs;\n    }\n\n    /// @dev Calculate inverse (x, -y) of point (x, y).\n    /// @param _x coordinate x of P1\n    /// @param _y coordinate y of P1\n    /// @param _pp the modulus\n    /// @return (x, -y)\n    function ecInv(\n        uint256 _x,\n        uint256 _y,\n        uint256 _pp)\n    internal pure returns (uint256, uint256)\n    {\n        return (_x, (_pp - _y) % _pp);\n    }\n\n    /// @dev Add two points (x1, y1) and (x2, y2) in affine coordinates.\n    /// @param _x1 coordinate x of P1\n    /// @param _y1 coordinate y of P1\n    /// @param _x2 coordinate x of P2\n    /// @param _y2 coordinate y of P2\n    /// @param _aa constant of the curve\n    /// @param _pp the modulus\n    /// @return (qx, qy) = P1+P2 in affine coordinates\n    function ecAdd(\n        uint256 _x1,\n        uint256 _y1,\n        uint256 _x2,\n        uint256 _y2,\n        uint256 _aa,\n        uint256 _pp)\n    internal pure returns(uint256, uint256)\n    {\n        uint x = 0;\n        uint y = 0;\n        uint z = 0;\n        // Double if x1==x2 else add\n        if (_x1==_x2) {\n            (x, y, z) = jacDouble(\n                _x1,\n                _y1,\n                1,\n                _aa,\n                _pp);\n        } else {\n            (x, y, z) = jacAdd(\n                _x1,\n                _y1,\n                1,\n                _x2,\n                _y2,\n                1,\n                _pp);\n        }\n        // Get back to affine\n        return toAffine(\n            x,\n            y,\n            z,\n            _pp);\n    }\n\n    /// @dev Substract two points (x1, y1) and (x2, y2) in affine coordinates.\n    /// @param _x1 coordinate x of P1\n    /// @param _y1 coordinate y of P1\n    /// @param _x2 coordinate x of P2\n    /// @param _y2 coordinate y of P2\n    /// @param _aa constant of the curve\n    /// @param _pp the modulus\n    /// @return (qx, qy) = P1-P2 in affine coordinates\n    function ecSub(\n        uint256 _x1,\n        uint256 _y1,\n        uint256 _x2,\n        uint256 _y2,\n        uint256 _aa,\n        uint256 _pp)\n    internal pure returns(uint256, uint256)\n    {\n        // invert square\n        (uint256 x, uint256 y) = ecInv(_x2, _y2, _pp);\n        // P1-square\n        return ecAdd(\n            _x1,\n            _y1,\n            x,\n            y,\n            _aa,\n            _pp);\n    }\n\n    /// @dev Multiply point (x1, y1, z1) times d in affine coordinates.\n    /// @param _k scalar to multiply\n    /// @param _x coordinate x of P1\n    /// @param _y coordinate y of P1\n    /// @param _aa constant of the curve\n    /// @param _pp the modulus\n    /// @return (qx, qy) = d*P in affine coordinates\n    function ecMul(\n        uint256 _k,\n        uint256 _x,\n        uint256 _y,\n        uint256 _aa,\n        uint256 _pp)\n    internal pure returns(uint256, uint256)\n    {\n        // Jacobian multiplication\n        (uint256 x1, uint256 y1, uint256 z1) = jacMul(\n            _k,\n            _x,\n            _y,\n            1,\n            _aa,\n            _pp);\n        // Get back to affine\n        return toAffine(\n            x1,\n            y1,\n            z1,\n            _pp);\n    }\n\n    /// @dev Adds two points (x1, y1, z1) and (x2 y2, z2).\n    /// @param _x1 coordinate x of P1\n    /// @param _y1 coordinate y of P1\n    /// @param _z1 coordinate z of P1\n    /// @param _x2 coordinate x of square\n    /// @param _y2 coordinate y of square\n    /// @param _z2 coordinate z of square\n    /// @param _pp the modulus\n    /// @return (qx, qy, qz) P1+square in Jacobian\n    function jacAdd(\n        uint256 _x1,\n        uint256 _y1,\n        uint256 _z1,\n        uint256 _x2,\n        uint256 _y2,\n        uint256 _z2,\n        uint256 _pp)\n    internal pure returns (uint256, uint256, uint256)\n    {\n        if ((_x1==0)&&(_y1==0))\n            return (_x2, _y2, _z2);\n        if ((_x2==0)&&(_y2==0))\n            return (_x1, _y1, _z1);\n        // We follow the equations described in https://pdfs.semanticscholar.org/5c64/29952e08025a9649c2b0ba32518e9a7fb5c2.pdf Section 5\n\n        uint[4] memory zs; // z1^2, z1^3, z2^2, z2^3\n        zs[0] = mulmod(_z1, _z1, _pp);\n        zs[1] = mulmod(_z1, zs[0], _pp);\n        zs[2] = mulmod(_z2, _z2, _pp);\n        zs[3] = mulmod(_z2, zs[2], _pp);\n\n        // u1, s1, u2, s2\n        zs = [\n        mulmod(_x1, zs[2], _pp),\n        mulmod(_y1, zs[3], _pp),\n        mulmod(_x2, zs[0], _pp),\n        mulmod(_y2, zs[1], _pp)\n        ];\n        if (zs[0] == zs[2]) {\n            if (zs[1] != zs[3])\n                revert(\"Wrong data\");\n            else {\n                revert(\"Use double instead\");\n            }\n        }\n        uint[4] memory hr;\n        //h\n        hr[0] = addmod(zs[2], _pp - zs[0], _pp);\n        //r\n        hr[1] = addmod(zs[3], _pp - zs[1], _pp);\n        //h^2\n        hr[2] = mulmod(hr[0], hr[0], _pp);\n        // h^3\n        hr[3] = mulmod(hr[2], hr[0], _pp);\n        // qx = -h^3  -2u1h^2+r^2\n        uint256 qx = addmod(mulmod(hr[1], hr[1], _pp), _pp - hr[3], _pp);\n        qx = addmod(qx, _pp - mulmod(2, mulmod(zs[0], hr[2], _pp), _pp), _pp);\n        // qy = -s1*z1*h^3+r(u1*h^2 -x^3)\n        uint256 qy = mulmod(hr[1], addmod(mulmod(zs[0], hr[2], _pp), _pp - qx, _pp), _pp);\n        qy = addmod(qy, _pp - mulmod(zs[1], hr[3], _pp), _pp);\n        // qz = h*z1*z2\n        uint256 qz = mulmod(hr[0], mulmod(_z1, _z2, _pp), _pp);\n        return(qx, qy, qz);\n    }\n\n    /// @dev Doubles a points (x, y, z).\n    /// @param _x coordinate x of P1\n    /// @param _y coordinate y of P1\n    /// @param _z coordinate z of P1\n    /// @param _pp the modulus\n    /// @param _aa the a scalar in the curve equation\n    /// @return (qx, qy, qz) 2P in Jacobian\n    function jacDouble(\n        uint256 _x,\n        uint256 _y,\n        uint256 _z,\n        uint256 _aa,\n        uint256 _pp)\n    internal pure returns (uint256, uint256, uint256)\n    {\n        if (_z == 0)\n            return (_x, _y, _z);\n        uint256[3] memory square;\n        // We follow the equations described in https://pdfs.semanticscholar.org/5c64/29952e08025a9649c2b0ba32518e9a7fb5c2.pdf Section 5\n        // Note: there is a bug in the paper regarding the m parameter, M=3*(x1^2)+a*(z1^4)\n        square[0] = mulmod(_x, _x, _pp); //x1^2\n        square[1] = mulmod(_y, _y, _pp); //y1^2\n        square[2] = mulmod(_z, _z, _pp); //z1^2\n\n        // s\n        uint s = mulmod(4, mulmod(_x, square[1], _pp), _pp);\n        // m\n        uint m = addmod(mulmod(3, square[0], _pp), mulmod(_aa, mulmod(square[2], square[2], _pp), _pp), _pp);\n        // qx\n        uint256 qx = addmod(mulmod(m, m, _pp), _pp - addmod(s, s, _pp), _pp);\n        // qy = -8*y1^4 + M(S-T)\n        uint256 qy = addmod(mulmod(m, addmod(s, _pp - qx, _pp), _pp), _pp - mulmod(8, mulmod(square[1], square[1], _pp), _pp), _pp);\n        // qz = 2*y1*z1\n        uint256 qz = mulmod(2, mulmod(_y, _z, _pp), _pp);\n\n        return (qx, qy, qz);\n    }\n\n    /// @dev Multiply point (x, y, z) times d.\n    /// @param _d scalar to multiply\n    /// @param _x coordinate x of P1\n    /// @param _y coordinate y of P1\n    /// @param _z coordinate z of P1\n    /// @param _aa constant of curve\n    /// @param _pp the modulus\n    /// @return (qx, qy, qz) d*P1 in Jacobian\n    function jacMul(\n        uint256 _d,\n        uint256 _x,\n        uint256 _y,\n        uint256 _z,\n        uint256 _aa,\n        uint256 _pp)\n    internal pure returns (uint256, uint256, uint256)\n    {\n        uint256 remaining = _d;\n        uint256[3] memory point;\n        point[0] = _x;\n        point[1] = _y;\n        point[2] = _z;\n        uint256 qx = 0;\n        uint256 qy = 0;\n        uint256 qz = 1;\n\n        if (_d == 0) {\n            return (qx, qy, qz);\n        }\n        // Double and add algorithm\n        while (remaining != 0) {\n            if ((remaining & 1) != 0) {\n                (qx, qy, qz) = jacAdd(\n                    qx,\n                    qy,\n                    qz,\n                    point[0],\n                    point[1],\n                    point[2],\n                    _pp);\n            }\n            remaining = remaining / 2;\n            (point[0], point[1], point[2]) = jacDouble(\n                point[0],\n                point[1],\n                point[2],\n                _aa,\n                _pp);\n        }\n        return (qx, qy, qz);\n    }\n}",
-  "sourcePath": "/home/anhnt/projects/go/src/github.com/ethereum/tomochain-privacy-sc/contracts/EllipticCurve.sol",
+  "sourcePath": "/home/anhnt/projects/go/src/github.com/ethereum/privacy-contracts/contracts/EllipticCurve.sol",
   "ast": {
-    "absolutePath": "/home/anhnt/projects/go/src/github.com/ethereum/tomochain-privacy-sc/contracts/EllipticCurve.sol",
+    "absolutePath": "/home/anhnt/projects/go/src/github.com/ethereum/privacy-contracts/contracts/EllipticCurve.sol",
     "exportedSymbols": {
       "EllipticCurve": [
         1172
@@ -273,10 +273,10 @@
                             "name": "revert",
                             "nodeType": "Identifier",
                             "overloadedDeclarations": [
-                              3518,
-                              3519
+                              3527,
+                              3528
                             ],
-                            "referencedDeclaration": 3519,
+                            "referencedDeclaration": 3528,
                             "src": "496:6:0",
                             "typeDescriptions": {
                               "typeIdentifier": "t_function_revert_pure$_t_string_memory_ptr_$returns$__$",
@@ -807,7 +807,7 @@
                                             "name": "mulmod",
                                             "nodeType": "Identifier",
                                             "overloadedDeclarations": [],
-                                            "referencedDeclaration": 3514,
+                                            "referencedDeclaration": 3523,
                                             "src": "754:6:0",
                                             "typeDescriptions": {
                                               "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -881,7 +881,7 @@
                                   "name": "addmod",
                                   "nodeType": "Identifier",
                                   "overloadedDeclarations": [],
-                                  "referencedDeclaration": 3501,
+                                  "referencedDeclaration": 3510,
                                   "src": "737:6:0",
                                   "typeDescriptions": {
                                     "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -1533,10 +1533,10 @@
                         "name": "revert",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [
-                          3518,
-                          3519
+                          3527,
+                          3528
                         ],
-                        "referencedDeclaration": 3519,
+                        "referencedDeclaration": 3528,
                         "src": "1372:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_revert_pure$_t_string_memory_ptr_$returns$__$",
@@ -1710,42 +1710,6 @@
                 {
                   "externalReferences": [
                     {
-                      "bit": {
-                        "declaration": 127,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1497:3:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "_base": {
-                        "declaration": 93,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1761:5:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "_exp": {
-                        "declaration": 95,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1786:4:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "bit": {
-                        "declaration": 127,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1796:3:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
                       "_pp": {
                         "declaration": 97,
                         "isOffset": false,
@@ -1755,182 +1719,11 @@
                       }
                     },
                     {
-                      "r": {
-                        "declaration": 123,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1545:1:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "r": {
-                        "declaration": 123,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1548:1:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "_pp": {
-                        "declaration": 97,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1551:3:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "_base": {
-                        "declaration": 93,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1561:5:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "_exp": {
-                        "declaration": 95,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1586:4:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
                       "bit": {
                         "declaration": 127,
                         "isOffset": false,
                         "isSlot": false,
-                        "src": "1592:3:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "r": {
-                        "declaration": 123,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1526:1:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "r": {
-                        "declaration": 123,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1726:1:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "r": {
-                        "declaration": 123,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1622:1:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "_base": {
-                        "declaration": 93,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1657:5:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "_pp": {
-                        "declaration": 97,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1809:3:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "r": {
-                        "declaration": 123,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1745:1:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "r": {
-                        "declaration": 123,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1748:1:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "_pp": {
-                        "declaration": 97,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1751:3:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "_pp": {
-                        "declaration": 97,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1705:3:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "r": {
-                        "declaration": 123,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1641:1:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "r": {
-                        "declaration": 123,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1644:1:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "_pp": {
-                        "declaration": 97,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1647:3:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "_exp": {
-                        "declaration": 95,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1682:4:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "bit": {
-                        "declaration": 127,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1692:3:0",
+                        "src": "1497:3:0",
                         "valueSize": 1
                       }
                     },
@@ -2021,6 +1814,213 @@
                         "isOffset": false,
                         "isSlot": false,
                         "src": "1934:3:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "r": {
+                        "declaration": 123,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1545:1:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "r": {
+                        "declaration": 123,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1548:1:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "_pp": {
+                        "declaration": 97,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1551:3:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "_base": {
+                        "declaration": 93,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1561:5:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "_exp": {
+                        "declaration": 95,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1586:4:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "bit": {
+                        "declaration": 127,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1592:3:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "r": {
+                        "declaration": 123,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1526:1:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "_pp": {
+                        "declaration": 97,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1705:3:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "r": {
+                        "declaration": 123,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1641:1:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "r": {
+                        "declaration": 123,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1644:1:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "_pp": {
+                        "declaration": 97,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1647:3:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "_base": {
+                        "declaration": 93,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1657:5:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "_exp": {
+                        "declaration": 95,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1682:4:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "bit": {
+                        "declaration": 127,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1692:3:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "r": {
+                        "declaration": 123,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1622:1:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "_base": {
+                        "declaration": 93,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1761:5:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "_pp": {
+                        "declaration": 97,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1809:3:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "r": {
+                        "declaration": 123,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1745:1:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "r": {
+                        "declaration": 123,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1748:1:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "_pp": {
+                        "declaration": 97,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1751:3:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "_exp": {
+                        "declaration": 95,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1786:4:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "bit": {
+                        "declaration": 127,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1796:3:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "r": {
+                        "declaration": 123,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1726:1:0",
                         "valueSize": 1
                       }
                     }
@@ -2385,7 +2385,7 @@
                       "name": "mulmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3514,
+                      "referencedDeclaration": 3523,
                       "src": "2500:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -2504,7 +2504,7 @@
                       "name": "mulmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3514,
+                      "referencedDeclaration": 3523,
                       "src": "2546:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -2639,7 +2639,7 @@
                           "name": "mulmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3514,
+                          "referencedDeclaration": 3523,
                           "src": "2602:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -2693,7 +2693,7 @@
                       "name": "mulmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3514,
+                      "referencedDeclaration": 3523,
                       "src": "2591:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -3071,7 +3071,7 @@
                               "name": "mulmod",
                               "nodeType": "Identifier",
                               "overloadedDeclarations": [],
-                              "referencedDeclaration": 3514,
+                              "referencedDeclaration": 3523,
                               "src": "3196:6:0",
                               "typeDescriptions": {
                                 "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -3125,7 +3125,7 @@
                           "name": "mulmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3514,
+                          "referencedDeclaration": 3523,
                           "src": "3185:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -3211,7 +3211,7 @@
                               "name": "mulmod",
                               "nodeType": "Identifier",
                               "overloadedDeclarations": [],
-                              "referencedDeclaration": 3514,
+                              "referencedDeclaration": 3523,
                               "src": "3230:6:0",
                               "typeDescriptions": {
                                 "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -3278,7 +3278,7 @@
                           "name": "addmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3501,
+                          "referencedDeclaration": 3510,
                           "src": "3223:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -3332,7 +3332,7 @@
                       "name": "addmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3501,
+                      "referencedDeclaration": 3510,
                       "src": "3178:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -4396,7 +4396,7 @@
                       "name": "mulmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3514,
+                      "referencedDeclaration": 3523,
                       "src": "4031:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -4518,7 +4518,7 @@
                           "name": "mulmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3514,
+                          "referencedDeclaration": 3523,
                           "src": "4093:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -4585,7 +4585,7 @@
                       "name": "mulmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3514,
+                      "referencedDeclaration": 3523,
                       "src": "4086:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -4770,7 +4770,7 @@
                                   "name": "mulmod",
                                   "nodeType": "Identifier",
                                   "overloadedDeclarations": [],
-                                  "referencedDeclaration": 3514,
+                                  "referencedDeclaration": 3523,
                                   "src": "4203:6:0",
                                   "typeDescriptions": {
                                     "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -4824,7 +4824,7 @@
                               "name": "addmod",
                               "nodeType": "Identifier",
                               "overloadedDeclarations": [],
-                              "referencedDeclaration": 3501,
+                              "referencedDeclaration": 3510,
                               "src": "4191:6:0",
                               "typeDescriptions": {
                                 "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -5003,7 +5003,7 @@
                               "name": "addmod",
                               "nodeType": "Identifier",
                               "overloadedDeclarations": [],
-                              "referencedDeclaration": 3501,
+                              "referencedDeclaration": 3510,
                               "src": "4312:6:0",
                               "typeDescriptions": {
                                 "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -8288,7 +8288,7 @@
                         "name": "mulmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3514,
+                        "referencedDeclaration": 3523,
                         "src": "8410:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -8468,7 +8468,7 @@
                         "name": "mulmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3514,
+                        "referencedDeclaration": 3523,
                         "src": "8449:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -8616,7 +8616,7 @@
                         "name": "mulmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3514,
+                        "referencedDeclaration": 3523,
                         "src": "8490:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -8796,7 +8796,7 @@
                         "name": "mulmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3514,
+                        "referencedDeclaration": 3523,
                         "src": "8529:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -8947,7 +8947,7 @@
                             "name": "mulmod",
                             "nodeType": "Identifier",
                             "overloadedDeclarations": [],
-                            "referencedDeclaration": 3514,
+                            "referencedDeclaration": 3523,
                             "src": "8604:6:0",
                             "typeDescriptions": {
                               "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -9062,7 +9062,7 @@
                             "name": "mulmod",
                             "nodeType": "Identifier",
                             "overloadedDeclarations": [],
-                            "referencedDeclaration": 3514,
+                            "referencedDeclaration": 3523,
                             "src": "8637:6:0",
                             "typeDescriptions": {
                               "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -9177,7 +9177,7 @@
                             "name": "mulmod",
                             "nodeType": "Identifier",
                             "overloadedDeclarations": [],
-                            "referencedDeclaration": 3514,
+                            "referencedDeclaration": 3523,
                             "src": "8670:6:0",
                             "typeDescriptions": {
                               "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -9292,7 +9292,7 @@
                             "name": "mulmod",
                             "nodeType": "Identifier",
                             "overloadedDeclarations": [],
-                            "referencedDeclaration": 3514,
+                            "referencedDeclaration": 3523,
                             "src": "8703:6:0",
                             "typeDescriptions": {
                               "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -9605,10 +9605,10 @@
                                   "name": "revert",
                                   "nodeType": "Identifier",
                                   "overloadedDeclarations": [
-                                    3518,
-                                    3519
+                                    3527,
+                                    3528
                                   ],
-                                  "referencedDeclaration": 3519,
+                                  "referencedDeclaration": 3528,
                                   "src": "8873:6:0",
                                   "typeDescriptions": {
                                     "typeIdentifier": "t_function_revert_pure$_t_string_memory_ptr_$returns$__$",
@@ -9672,10 +9672,10 @@
                               "name": "revert",
                               "nodeType": "Identifier",
                               "overloadedDeclarations": [
-                                3518,
-                                3519
+                                3527,
+                                3528
                               ],
-                              "referencedDeclaration": 3519,
+                              "referencedDeclaration": 3528,
                               "src": "8816:6:0",
                               "typeDescriptions": {
                                 "typeIdentifier": "t_function_revert_pure$_t_string_memory_ptr_$returns$__$",
@@ -9981,7 +9981,7 @@
                         "name": "addmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3501,
+                        "referencedDeclaration": 3510,
                         "src": "8982:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -10225,7 +10225,7 @@
                         "name": "addmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3501,
+                        "referencedDeclaration": 3510,
                         "src": "9043:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -10437,7 +10437,7 @@
                         "name": "mulmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3514,
+                        "referencedDeclaration": 3523,
                         "src": "9106:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -10649,7 +10649,7 @@
                         "name": "mulmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3514,
+                        "referencedDeclaration": 3523,
                         "src": "9164:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -10842,7 +10842,7 @@
                           "name": "mulmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3514,
+                          "referencedDeclaration": 3523,
                           "src": "9253:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -10973,7 +10973,7 @@
                       "name": "addmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3501,
+                      "referencedDeclaration": 3510,
                       "src": "9246:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -11209,7 +11209,7 @@
                                   "name": "mulmod",
                                   "nodeType": "Identifier",
                                   "overloadedDeclarations": [],
-                                  "referencedDeclaration": 3514,
+                                  "referencedDeclaration": 3523,
                                   "src": "9339:6:0",
                                   "typeDescriptions": {
                                     "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -11263,7 +11263,7 @@
                               "name": "mulmod",
                               "nodeType": "Identifier",
                               "overloadedDeclarations": [],
-                              "referencedDeclaration": 3514,
+                              "referencedDeclaration": 3523,
                               "src": "9329:6:0",
                               "typeDescriptions": {
                                 "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -11323,7 +11323,7 @@
                         "name": "addmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3501,
+                        "referencedDeclaration": 3510,
                         "src": "9312:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -11564,7 +11564,7 @@
                               "name": "mulmod",
                               "nodeType": "Identifier",
                               "overloadedDeclarations": [],
-                              "referencedDeclaration": 3514,
+                              "referencedDeclaration": 3523,
                               "src": "9462:6:0",
                               "typeDescriptions": {
                                 "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -11663,7 +11663,7 @@
                           "name": "addmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3501,
+                          "referencedDeclaration": 3510,
                           "src": "9455:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -11717,7 +11717,7 @@
                       "name": "mulmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3514,
+                      "referencedDeclaration": 3523,
                       "src": "9441:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -11932,7 +11932,7 @@
                               "name": "mulmod",
                               "nodeType": "Identifier",
                               "overloadedDeclarations": [],
-                              "referencedDeclaration": 3514,
+                              "referencedDeclaration": 3523,
                               "src": "9541:6:0",
                               "typeDescriptions": {
                                 "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -11992,7 +11992,7 @@
                         "name": "addmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3501,
+                        "referencedDeclaration": 3510,
                         "src": "9524:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -12166,7 +12166,7 @@
                           "name": "mulmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3514,
+                          "referencedDeclaration": 3523,
                           "src": "9633:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -12220,7 +12220,7 @@
                       "name": "mulmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3514,
+                      "referencedDeclaration": 3523,
                       "src": "9619:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -12900,7 +12900,7 @@
                         "name": "mulmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3514,
+                        "referencedDeclaration": 3523,
                         "src": "10501:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -13048,7 +13048,7 @@
                         "name": "mulmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3514,
+                        "referencedDeclaration": 3523,
                         "src": "10549:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -13196,7 +13196,7 @@
                         "name": "mulmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3514,
+                        "referencedDeclaration": 3523,
                         "src": "10597:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -13375,7 +13375,7 @@
                           "name": "mulmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3514,
+                          "referencedDeclaration": 3523,
                           "src": "10666:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -13429,7 +13429,7 @@
                       "name": "mulmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3514,
+                      "referencedDeclaration": 3523,
                       "src": "10656:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -13588,7 +13588,7 @@
                           "name": "mulmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3514,
+                          "referencedDeclaration": 3523,
                           "src": "10737:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -13751,7 +13751,7 @@
                               "name": "mulmod",
                               "nodeType": "Identifier",
                               "overloadedDeclarations": [],
-                              "referencedDeclaration": 3514,
+                              "referencedDeclaration": 3523,
                               "src": "10776:6:0",
                               "typeDescriptions": {
                                 "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -13805,7 +13805,7 @@
                           "name": "mulmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3514,
+                          "referencedDeclaration": 3523,
                           "src": "10764:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -13859,7 +13859,7 @@
                       "name": "addmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3501,
+                      "referencedDeclaration": 3510,
                       "src": "10730:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -13981,7 +13981,7 @@
                           "name": "mulmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3514,
+                          "referencedDeclaration": 3523,
                           "src": "10865:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -14090,7 +14090,7 @@
                             "name": "addmod",
                             "nodeType": "Identifier",
                             "overloadedDeclarations": [],
-                            "referencedDeclaration": 3501,
+                            "referencedDeclaration": 3510,
                             "src": "10890:6:0",
                             "typeDescriptions": {
                               "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -14150,7 +14150,7 @@
                       "name": "addmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3501,
+                      "referencedDeclaration": 3510,
                       "src": "10858:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -14320,7 +14320,7 @@
                               "name": "addmod",
                               "nodeType": "Identifier",
                               "overloadedDeclarations": [],
-                              "referencedDeclaration": 3501,
+                              "referencedDeclaration": 3510,
                               "src": "10986:6:0",
                               "typeDescriptions": {
                                 "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -14374,7 +14374,7 @@
                           "name": "mulmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3514,
+                          "referencedDeclaration": 3523,
                           "src": "10976:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -14568,7 +14568,7 @@
                                 "name": "mulmod",
                                 "nodeType": "Identifier",
                                 "overloadedDeclarations": [],
-                                "referencedDeclaration": 3514,
+                                "referencedDeclaration": 3523,
                                 "src": "11034:6:0",
                                 "typeDescriptions": {
                                   "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -14622,7 +14622,7 @@
                             "name": "mulmod",
                             "nodeType": "Identifier",
                             "overloadedDeclarations": [],
-                            "referencedDeclaration": 3514,
+                            "referencedDeclaration": 3523,
                             "src": "11024:6:0",
                             "typeDescriptions": {
                               "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -14682,7 +14682,7 @@
                       "name": "addmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3501,
+                      "referencedDeclaration": 3510,
                       "src": "10969:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -14822,7 +14822,7 @@
                           "name": "mulmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3514,
+                          "referencedDeclaration": 3523,
                           "src": "11136:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -14876,7 +14876,7 @@
                       "name": "mulmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3514,
+                      "referencedDeclaration": 3523,
                       "src": "11126:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -17142,7 +17142,7 @@
     "src": "1:12596:0"
   },
   "legacyAST": {
-    "absolutePath": "/home/anhnt/projects/go/src/github.com/ethereum/tomochain-privacy-sc/contracts/EllipticCurve.sol",
+    "absolutePath": "/home/anhnt/projects/go/src/github.com/ethereum/privacy-contracts/contracts/EllipticCurve.sol",
     "exportedSymbols": {
       "EllipticCurve": [
         1172
@@ -17407,10 +17407,10 @@
                             "name": "revert",
                             "nodeType": "Identifier",
                             "overloadedDeclarations": [
-                              3518,
-                              3519
+                              3527,
+                              3528
                             ],
-                            "referencedDeclaration": 3519,
+                            "referencedDeclaration": 3528,
                             "src": "496:6:0",
                             "typeDescriptions": {
                               "typeIdentifier": "t_function_revert_pure$_t_string_memory_ptr_$returns$__$",
@@ -17941,7 +17941,7 @@
                                             "name": "mulmod",
                                             "nodeType": "Identifier",
                                             "overloadedDeclarations": [],
-                                            "referencedDeclaration": 3514,
+                                            "referencedDeclaration": 3523,
                                             "src": "754:6:0",
                                             "typeDescriptions": {
                                               "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -18015,7 +18015,7 @@
                                   "name": "addmod",
                                   "nodeType": "Identifier",
                                   "overloadedDeclarations": [],
-                                  "referencedDeclaration": 3501,
+                                  "referencedDeclaration": 3510,
                                   "src": "737:6:0",
                                   "typeDescriptions": {
                                     "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -18667,10 +18667,10 @@
                         "name": "revert",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [
-                          3518,
-                          3519
+                          3527,
+                          3528
                         ],
-                        "referencedDeclaration": 3519,
+                        "referencedDeclaration": 3528,
                         "src": "1372:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_revert_pure$_t_string_memory_ptr_$returns$__$",
@@ -18844,42 +18844,6 @@
                 {
                   "externalReferences": [
                     {
-                      "bit": {
-                        "declaration": 127,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1497:3:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "_base": {
-                        "declaration": 93,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1761:5:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "_exp": {
-                        "declaration": 95,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1786:4:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "bit": {
-                        "declaration": 127,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1796:3:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
                       "_pp": {
                         "declaration": 97,
                         "isOffset": false,
@@ -18889,182 +18853,11 @@
                       }
                     },
                     {
-                      "r": {
-                        "declaration": 123,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1545:1:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "r": {
-                        "declaration": 123,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1548:1:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "_pp": {
-                        "declaration": 97,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1551:3:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "_base": {
-                        "declaration": 93,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1561:5:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "_exp": {
-                        "declaration": 95,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1586:4:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
                       "bit": {
                         "declaration": 127,
                         "isOffset": false,
                         "isSlot": false,
-                        "src": "1592:3:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "r": {
-                        "declaration": 123,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1526:1:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "r": {
-                        "declaration": 123,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1726:1:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "r": {
-                        "declaration": 123,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1622:1:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "_base": {
-                        "declaration": 93,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1657:5:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "_pp": {
-                        "declaration": 97,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1809:3:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "r": {
-                        "declaration": 123,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1745:1:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "r": {
-                        "declaration": 123,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1748:1:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "_pp": {
-                        "declaration": 97,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1751:3:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "_pp": {
-                        "declaration": 97,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1705:3:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "r": {
-                        "declaration": 123,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1641:1:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "r": {
-                        "declaration": 123,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1644:1:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "_pp": {
-                        "declaration": 97,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1647:3:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "_exp": {
-                        "declaration": 95,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1682:4:0",
-                        "valueSize": 1
-                      }
-                    },
-                    {
-                      "bit": {
-                        "declaration": 127,
-                        "isOffset": false,
-                        "isSlot": false,
-                        "src": "1692:3:0",
+                        "src": "1497:3:0",
                         "valueSize": 1
                       }
                     },
@@ -19155,6 +18948,213 @@
                         "isOffset": false,
                         "isSlot": false,
                         "src": "1934:3:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "r": {
+                        "declaration": 123,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1545:1:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "r": {
+                        "declaration": 123,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1548:1:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "_pp": {
+                        "declaration": 97,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1551:3:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "_base": {
+                        "declaration": 93,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1561:5:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "_exp": {
+                        "declaration": 95,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1586:4:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "bit": {
+                        "declaration": 127,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1592:3:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "r": {
+                        "declaration": 123,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1526:1:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "_pp": {
+                        "declaration": 97,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1705:3:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "r": {
+                        "declaration": 123,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1641:1:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "r": {
+                        "declaration": 123,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1644:1:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "_pp": {
+                        "declaration": 97,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1647:3:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "_base": {
+                        "declaration": 93,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1657:5:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "_exp": {
+                        "declaration": 95,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1682:4:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "bit": {
+                        "declaration": 127,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1692:3:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "r": {
+                        "declaration": 123,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1622:1:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "_base": {
+                        "declaration": 93,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1761:5:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "_pp": {
+                        "declaration": 97,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1809:3:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "r": {
+                        "declaration": 123,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1745:1:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "r": {
+                        "declaration": 123,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1748:1:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "_pp": {
+                        "declaration": 97,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1751:3:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "_exp": {
+                        "declaration": 95,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1786:4:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "bit": {
+                        "declaration": 127,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1796:3:0",
+                        "valueSize": 1
+                      }
+                    },
+                    {
+                      "r": {
+                        "declaration": 123,
+                        "isOffset": false,
+                        "isSlot": false,
+                        "src": "1726:1:0",
                         "valueSize": 1
                       }
                     }
@@ -19519,7 +19519,7 @@
                       "name": "mulmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3514,
+                      "referencedDeclaration": 3523,
                       "src": "2500:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -19638,7 +19638,7 @@
                       "name": "mulmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3514,
+                      "referencedDeclaration": 3523,
                       "src": "2546:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -19773,7 +19773,7 @@
                           "name": "mulmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3514,
+                          "referencedDeclaration": 3523,
                           "src": "2602:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -19827,7 +19827,7 @@
                       "name": "mulmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3514,
+                      "referencedDeclaration": 3523,
                       "src": "2591:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -20205,7 +20205,7 @@
                               "name": "mulmod",
                               "nodeType": "Identifier",
                               "overloadedDeclarations": [],
-                              "referencedDeclaration": 3514,
+                              "referencedDeclaration": 3523,
                               "src": "3196:6:0",
                               "typeDescriptions": {
                                 "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -20259,7 +20259,7 @@
                           "name": "mulmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3514,
+                          "referencedDeclaration": 3523,
                           "src": "3185:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -20345,7 +20345,7 @@
                               "name": "mulmod",
                               "nodeType": "Identifier",
                               "overloadedDeclarations": [],
-                              "referencedDeclaration": 3514,
+                              "referencedDeclaration": 3523,
                               "src": "3230:6:0",
                               "typeDescriptions": {
                                 "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -20412,7 +20412,7 @@
                           "name": "addmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3501,
+                          "referencedDeclaration": 3510,
                           "src": "3223:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -20466,7 +20466,7 @@
                       "name": "addmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3501,
+                      "referencedDeclaration": 3510,
                       "src": "3178:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -21530,7 +21530,7 @@
                       "name": "mulmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3514,
+                      "referencedDeclaration": 3523,
                       "src": "4031:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -21652,7 +21652,7 @@
                           "name": "mulmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3514,
+                          "referencedDeclaration": 3523,
                           "src": "4093:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -21719,7 +21719,7 @@
                       "name": "mulmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3514,
+                      "referencedDeclaration": 3523,
                       "src": "4086:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -21904,7 +21904,7 @@
                                   "name": "mulmod",
                                   "nodeType": "Identifier",
                                   "overloadedDeclarations": [],
-                                  "referencedDeclaration": 3514,
+                                  "referencedDeclaration": 3523,
                                   "src": "4203:6:0",
                                   "typeDescriptions": {
                                     "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -21958,7 +21958,7 @@
                               "name": "addmod",
                               "nodeType": "Identifier",
                               "overloadedDeclarations": [],
-                              "referencedDeclaration": 3501,
+                              "referencedDeclaration": 3510,
                               "src": "4191:6:0",
                               "typeDescriptions": {
                                 "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -22137,7 +22137,7 @@
                               "name": "addmod",
                               "nodeType": "Identifier",
                               "overloadedDeclarations": [],
-                              "referencedDeclaration": 3501,
+                              "referencedDeclaration": 3510,
                               "src": "4312:6:0",
                               "typeDescriptions": {
                                 "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -25422,7 +25422,7 @@
                         "name": "mulmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3514,
+                        "referencedDeclaration": 3523,
                         "src": "8410:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -25602,7 +25602,7 @@
                         "name": "mulmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3514,
+                        "referencedDeclaration": 3523,
                         "src": "8449:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -25750,7 +25750,7 @@
                         "name": "mulmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3514,
+                        "referencedDeclaration": 3523,
                         "src": "8490:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -25930,7 +25930,7 @@
                         "name": "mulmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3514,
+                        "referencedDeclaration": 3523,
                         "src": "8529:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -26081,7 +26081,7 @@
                             "name": "mulmod",
                             "nodeType": "Identifier",
                             "overloadedDeclarations": [],
-                            "referencedDeclaration": 3514,
+                            "referencedDeclaration": 3523,
                             "src": "8604:6:0",
                             "typeDescriptions": {
                               "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -26196,7 +26196,7 @@
                             "name": "mulmod",
                             "nodeType": "Identifier",
                             "overloadedDeclarations": [],
-                            "referencedDeclaration": 3514,
+                            "referencedDeclaration": 3523,
                             "src": "8637:6:0",
                             "typeDescriptions": {
                               "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -26311,7 +26311,7 @@
                             "name": "mulmod",
                             "nodeType": "Identifier",
                             "overloadedDeclarations": [],
-                            "referencedDeclaration": 3514,
+                            "referencedDeclaration": 3523,
                             "src": "8670:6:0",
                             "typeDescriptions": {
                               "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -26426,7 +26426,7 @@
                             "name": "mulmod",
                             "nodeType": "Identifier",
                             "overloadedDeclarations": [],
-                            "referencedDeclaration": 3514,
+                            "referencedDeclaration": 3523,
                             "src": "8703:6:0",
                             "typeDescriptions": {
                               "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -26739,10 +26739,10 @@
                                   "name": "revert",
                                   "nodeType": "Identifier",
                                   "overloadedDeclarations": [
-                                    3518,
-                                    3519
+                                    3527,
+                                    3528
                                   ],
-                                  "referencedDeclaration": 3519,
+                                  "referencedDeclaration": 3528,
                                   "src": "8873:6:0",
                                   "typeDescriptions": {
                                     "typeIdentifier": "t_function_revert_pure$_t_string_memory_ptr_$returns$__$",
@@ -26806,10 +26806,10 @@
                               "name": "revert",
                               "nodeType": "Identifier",
                               "overloadedDeclarations": [
-                                3518,
-                                3519
+                                3527,
+                                3528
                               ],
-                              "referencedDeclaration": 3519,
+                              "referencedDeclaration": 3528,
                               "src": "8816:6:0",
                               "typeDescriptions": {
                                 "typeIdentifier": "t_function_revert_pure$_t_string_memory_ptr_$returns$__$",
@@ -27115,7 +27115,7 @@
                         "name": "addmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3501,
+                        "referencedDeclaration": 3510,
                         "src": "8982:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -27359,7 +27359,7 @@
                         "name": "addmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3501,
+                        "referencedDeclaration": 3510,
                         "src": "9043:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -27571,7 +27571,7 @@
                         "name": "mulmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3514,
+                        "referencedDeclaration": 3523,
                         "src": "9106:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -27783,7 +27783,7 @@
                         "name": "mulmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3514,
+                        "referencedDeclaration": 3523,
                         "src": "9164:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -27976,7 +27976,7 @@
                           "name": "mulmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3514,
+                          "referencedDeclaration": 3523,
                           "src": "9253:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -28107,7 +28107,7 @@
                       "name": "addmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3501,
+                      "referencedDeclaration": 3510,
                       "src": "9246:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -28343,7 +28343,7 @@
                                   "name": "mulmod",
                                   "nodeType": "Identifier",
                                   "overloadedDeclarations": [],
-                                  "referencedDeclaration": 3514,
+                                  "referencedDeclaration": 3523,
                                   "src": "9339:6:0",
                                   "typeDescriptions": {
                                     "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -28397,7 +28397,7 @@
                               "name": "mulmod",
                               "nodeType": "Identifier",
                               "overloadedDeclarations": [],
-                              "referencedDeclaration": 3514,
+                              "referencedDeclaration": 3523,
                               "src": "9329:6:0",
                               "typeDescriptions": {
                                 "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -28457,7 +28457,7 @@
                         "name": "addmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3501,
+                        "referencedDeclaration": 3510,
                         "src": "9312:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -28698,7 +28698,7 @@
                               "name": "mulmod",
                               "nodeType": "Identifier",
                               "overloadedDeclarations": [],
-                              "referencedDeclaration": 3514,
+                              "referencedDeclaration": 3523,
                               "src": "9462:6:0",
                               "typeDescriptions": {
                                 "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -28797,7 +28797,7 @@
                           "name": "addmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3501,
+                          "referencedDeclaration": 3510,
                           "src": "9455:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -28851,7 +28851,7 @@
                       "name": "mulmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3514,
+                      "referencedDeclaration": 3523,
                       "src": "9441:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -29066,7 +29066,7 @@
                               "name": "mulmod",
                               "nodeType": "Identifier",
                               "overloadedDeclarations": [],
-                              "referencedDeclaration": 3514,
+                              "referencedDeclaration": 3523,
                               "src": "9541:6:0",
                               "typeDescriptions": {
                                 "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -29126,7 +29126,7 @@
                         "name": "addmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3501,
+                        "referencedDeclaration": 3510,
                         "src": "9524:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -29300,7 +29300,7 @@
                           "name": "mulmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3514,
+                          "referencedDeclaration": 3523,
                           "src": "9633:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -29354,7 +29354,7 @@
                       "name": "mulmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3514,
+                      "referencedDeclaration": 3523,
                       "src": "9619:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -30034,7 +30034,7 @@
                         "name": "mulmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3514,
+                        "referencedDeclaration": 3523,
                         "src": "10501:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -30182,7 +30182,7 @@
                         "name": "mulmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3514,
+                        "referencedDeclaration": 3523,
                         "src": "10549:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -30330,7 +30330,7 @@
                         "name": "mulmod",
                         "nodeType": "Identifier",
                         "overloadedDeclarations": [],
-                        "referencedDeclaration": 3514,
+                        "referencedDeclaration": 3523,
                         "src": "10597:6:0",
                         "typeDescriptions": {
                           "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -30509,7 +30509,7 @@
                           "name": "mulmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3514,
+                          "referencedDeclaration": 3523,
                           "src": "10666:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -30563,7 +30563,7 @@
                       "name": "mulmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3514,
+                      "referencedDeclaration": 3523,
                       "src": "10656:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -30722,7 +30722,7 @@
                           "name": "mulmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3514,
+                          "referencedDeclaration": 3523,
                           "src": "10737:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -30885,7 +30885,7 @@
                               "name": "mulmod",
                               "nodeType": "Identifier",
                               "overloadedDeclarations": [],
-                              "referencedDeclaration": 3514,
+                              "referencedDeclaration": 3523,
                               "src": "10776:6:0",
                               "typeDescriptions": {
                                 "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -30939,7 +30939,7 @@
                           "name": "mulmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3514,
+                          "referencedDeclaration": 3523,
                           "src": "10764:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -30993,7 +30993,7 @@
                       "name": "addmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3501,
+                      "referencedDeclaration": 3510,
                       "src": "10730:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -31115,7 +31115,7 @@
                           "name": "mulmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3514,
+                          "referencedDeclaration": 3523,
                           "src": "10865:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -31224,7 +31224,7 @@
                             "name": "addmod",
                             "nodeType": "Identifier",
                             "overloadedDeclarations": [],
-                            "referencedDeclaration": 3501,
+                            "referencedDeclaration": 3510,
                             "src": "10890:6:0",
                             "typeDescriptions": {
                               "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -31284,7 +31284,7 @@
                       "name": "addmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3501,
+                      "referencedDeclaration": 3510,
                       "src": "10858:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -31454,7 +31454,7 @@
                               "name": "addmod",
                               "nodeType": "Identifier",
                               "overloadedDeclarations": [],
-                              "referencedDeclaration": 3501,
+                              "referencedDeclaration": 3510,
                               "src": "10986:6:0",
                               "typeDescriptions": {
                                 "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -31508,7 +31508,7 @@
                           "name": "mulmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3514,
+                          "referencedDeclaration": 3523,
                           "src": "10976:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -31702,7 +31702,7 @@
                                 "name": "mulmod",
                                 "nodeType": "Identifier",
                                 "overloadedDeclarations": [],
-                                "referencedDeclaration": 3514,
+                                "referencedDeclaration": 3523,
                                 "src": "11034:6:0",
                                 "typeDescriptions": {
                                   "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -31756,7 +31756,7 @@
                             "name": "mulmod",
                             "nodeType": "Identifier",
                             "overloadedDeclarations": [],
-                            "referencedDeclaration": 3514,
+                            "referencedDeclaration": 3523,
                             "src": "11024:6:0",
                             "typeDescriptions": {
                               "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -31816,7 +31816,7 @@
                       "name": "addmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3501,
+                      "referencedDeclaration": 3510,
                       "src": "10969:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_addmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -31956,7 +31956,7 @@
                           "name": "mulmod",
                           "nodeType": "Identifier",
                           "overloadedDeclarations": [],
-                          "referencedDeclaration": 3514,
+                          "referencedDeclaration": 3523,
                           "src": "11136:6:0",
                           "typeDescriptions": {
                             "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -32010,7 +32010,7 @@
                       "name": "mulmod",
                       "nodeType": "Identifier",
                       "overloadedDeclarations": [],
-                      "referencedDeclaration": 3514,
+                      "referencedDeclaration": 3523,
                       "src": "11126:6:0",
                       "typeDescriptions": {
                         "typeIdentifier": "t_function_mulmod_pure$_t_uint256_$_t_uint256_$_t_uint256_$returns$_t_uint256_$",
@@ -34281,7 +34281,7 @@
   },
   "networks": {},
   "schemaVersion": "3.0.2",
-  "updatedAt": "2019-10-02T02:32:31.879Z",
+  "updatedAt": "2019-10-02T02:43:32.139Z",
   "devdoc": {
     "author": "Witnet Foundation",
     "details": "Library providing arithmetic operations over elliptic curves.",

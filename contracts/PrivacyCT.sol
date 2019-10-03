@@ -115,7 +115,7 @@ contract PrivacyCT {
             utxos[_inputIDs[i]].isSpent = true;
         }
         
-        //require(inputSum[0] == outputSum[0] && inputSum[1] == outputSum[1]);
+        require(inputSum[0] == outputSum[0] && inputSum[1] == outputSum[1]);
         //create output UTXOs
         outputLength = _outputs.length.div(6);
         for (i = 0; i < outputLength; i++) {
@@ -123,16 +123,16 @@ contract PrivacyCT {
             (uint8 yBitPub, uint256 xPub) = Secp256k1.compressXY(_outputs[outputLength*2 + i*2], _outputs[outputLength + i*2 + 1]);
             (uint8 yBitTxPub, uint256 xTxPub) = Secp256k1.compressXY(_outputs[outputLength*4 + i*2], _outputs[outputLength*4 + i*2 + 1]);
             utxos.push(UTXO ({
-                commitment: CompressPubKey(yBit, x),
-                pubkey: CompressPubKey(yBitPub, xPub),
+                commitment: CompressPubKey(yBit + 2, x),
+                pubkey: CompressPubKey(yBitPub + 2, xPub),
                 amount: _amounts[i],
-                txPub: CompressPubKey(yBitTxPub, xTxPub),
+                txPub: CompressPubKey(yBitTxPub + 2, xTxPub),
                 mask: _amounts[outputLength + i],
                 isSpent: false
             })
             );
             emit NewUTXO([x, xPub, xTxPub],
-                [yBit, yBitPub, yBitTxPub],
+                [yBit + 2, yBitPub + 2, yBitTxPub + 2],
                 [_amounts[i], _amounts[outputLength + i]],
                 utxos.length - 1);
         }
@@ -159,7 +159,7 @@ contract PrivacyCT {
                         bytes32[2] memory _rs, address payable recipient,
                         uint256[2] memory _commitmentAfter) public {
         //call precombiled to verify proof
-        require(_utxoIndex < utxos.length && !spentUTXOs[_utxoIndex]);
+        require(_utxoIndex < utxos.length && utxos[_utxoIndex].isSpent == false);
         temp2[0] = bytesToUint(_rs[0]);
         temp2[1] = bytesToUint(_rs[1]);
         (inputSum[0], inputSum[1]) = Secp256k1.decompressXY(utxos[_utxoIndex].pubkey.yBit - 2, utxos[_utxoIndex].pubkey.x);
@@ -176,17 +176,20 @@ contract PrivacyCT {
         spentUTXOs[_utxoIndex] = true;
         utxos[_utxoIndex].isSpent = true;
         (inputSum[0], inputSum[1]) = Secp256k1.decompressXY(utxos[_utxoIndex].commitment.yBit - 2, utxos[_utxoIndex].commitment.x);
+        emit InputSum(inputSum[0], inputSum[1]);
         (yBit, x) = Secp256k1.mulWithH(_amount1);
         (outputSum[0], outputSum[1]) = Secp256k1.decompressXY(yBit, x);
         emit OutputSum(outputSum[0], outputSum[1]);
         (outputSum[0], outputSum[1]) = Secp256k1.add(outputSum[0], outputSum[1], _commitmentAfter[0], _commitmentAfter[1]);
+        emit OutputSum(_commitmentAfter[0], _commitmentAfter[1]);
+        emit OutputSum(outputSum[0], outputSum[1]);
         require(outputSum[0] == inputSum[0] && outputSum[1] == inputSum[1]);
         (yBit, x) = Secp256k1.compressXY(_commitmentAfter[0], _commitmentAfter[1]);
         utxos.push(UTXO({
-            commitment: CompressPubKey(yBit, x),
-            pubkey: CompressPubKey(utxos[_utxoIndex].pubkey.yBit, utxos[_utxoIndex].pubkey.x),
+            commitment: CompressPubKey(yBit + 2, x),
+            pubkey: CompressPubKey(utxos[_utxoIndex].pubkey.yBit + 2, utxos[_utxoIndex].pubkey.x),
             amount: _amount1,
-            txPub: CompressPubKey(utxos[_utxoIndex].txPub.yBit, utxos[_utxoIndex].txPub.x),
+            txPub: CompressPubKey(utxos[_utxoIndex].txPub.yBit + 2, utxos[_utxoIndex].txPub.x),
             mask: utxos[_utxoIndex].mask,
             isSpent: false
         }));

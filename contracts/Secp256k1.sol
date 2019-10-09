@@ -1,5 +1,5 @@
 import {EllipticCurve} from "./EllipticCurve.sol";
-
+import "./SafeMath.sol";
 /**
  * @title Secp256k1
  *
@@ -12,6 +12,7 @@ import {EllipticCurve} from "./EllipticCurve.sol";
  * @author Andreas Olofsson (androlo1980@gmail.com)
  */
 library Secp256k1 {
+    using SafeMath for uint256;
 
     // TODO separate curve from crypto primitives?
     uint256 constant n = 0x30644E72E131A029B85045B68181585D97816A916871CA8D3C208C16D87CFD47;
@@ -126,13 +127,14 @@ library Secp256k1 {
     /// @dev See Curve.compress
     function compress(uint[2] memory P) internal pure returns (uint8 yBit, uint x) {
         assert(P.length == 2);
-        x = P[0];
-        yBit = P[1] & 1 == 1 ? 1 : 0;
+        (yBit, x) = compressXY(P[0], P[1]);
     }
 
     function compressXY(uint _x, uint _y) internal pure returns (uint8 yBit, uint x) {
         x = _x;
-        yBit = _y & 1 == 1 ? 1 : 0;
+        if ((_y.add(uint256(0))) % 2 == 0)
+            yBit = 0;
+        else yBit = 1;
     }
 
     /// @dev See Curve.decompress

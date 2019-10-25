@@ -22,6 +22,7 @@ contract PrivacyCT is RingCTVerifier {
     uint x;
     uint256[2] temp2;
     address RegistryContract = 0xbb32d285e4cF30d439F8106bbA926941730fbf1E;
+
     struct UTXO {
         CompressPubKey commitment;
         CompressPubKey pubkey;
@@ -29,17 +30,33 @@ contract PrivacyCT is RingCTVerifier {
         CompressPubKey txPub;
         uint256 mask;   //encoded mask
     }
+
+    struct Transaction {
+        uint[] utxos;   //indexes of utxos created by the transaction
+    }
+
+    UTXO[] public utxos;
+    Transaction[] txs;
+
+    mapping(uint256 => bool) keyImagesMapping;
+
+
+    //--------------------------EVENTS---------------------------------
     event NewUTXO(uint256[3] _Xs,   //commitmentX, pubkeyX, txPubX
         uint8[3] _YBits,        //commitmentYBit, pubkeyYBit, _txPubYBit
         uint256[2] _amount,
         uint256 _index);
+    event NewTransaction(uint256 _time, uint256[] _utxoIndexs);
 
-    UTXO[] public utxos;
-    mapping(uint256 => bool) public spentUTXOs;
-    mapping(uint256 => bool) keyImagesMapping;
-    //mapping(uint256 => bool) public keyImages;
     //the first step for every one to use private transactions is deposit to the contract
-    function deposit(uint _pubkeyX, uint _pubkeyY, uint _txPubKeyX, uint _txPubKeyY, uint256 _mask, uint256 _amount, uint256 _encodedMask) external payable {
+    function deposit(uint _pubkeyX,
+        uint _pubkeyY,
+        uint _txPubKeyX,
+        uint _txPubKeyY,
+        uint256 _mask,
+        uint256 _amount,
+        uint256 _encodedMask
+    ) external payable {
         uint[2] memory stealth;
         stealth[0] = _pubkeyX;
         stealth[1] = _pubkeyY;
@@ -56,13 +73,18 @@ contract PrivacyCT is RingCTVerifier {
             pubkey: CompressPubKey(pybit + 2, px),
             amount: _amount,
             txPub: CompressPubKey(txybit + 2, txx),
-            mask: _encodedMask            })
+            mask: _encodedMask})
         );
         UTXO storage lastUTXO = utxos[utxos.length.sub(1)];
         emit NewUTXO([lastUTXO.commitment.x, lastUTXO.pubkey.x, lastUTXO.txPub.x],
             [lastUTXO.commitment.yBit, lastUTXO.pubkey.yBit, lastUTXO.txPub.yBit],
             [lastUTXO.amount, lastUTXO.mask],
             utxos.length.sub(1));
+
+        /*Transaction memory tx;
+        txs.push(tx);
+        txs[txs.length.sub(1)].utxos.push(utxos.length.sub(1));
+        emit NewTransaction(now, txs[txs.length.sub(1)].utxos);*/
     }
     event Inputs(uint256[] _inputIDs);
     //function privateSend only contain the proof
@@ -77,11 +99,10 @@ contract PrivacyCT is RingCTVerifier {
     //ringCT proof size ctSize: uint16 => 2 byte
     //ringCT proof: ctSize bytes
     //bulletproofs: bp
-    function privateSend(uint256[][] memory _inputIDs,  //[numRing][ringSize]
+    function privateSend(uint256[] memory _inputIDs,  //[numRing]*[ringSize], data is structured: [ring00,ring01,ring02,ring11...]
         uint256[] memory _outputs, //1/3 for commitments, 1/3 for stealths,, 1/3 for txpubs
         uint256[] memory _amounts, //1/2 for encryptd amounts, 1/2 for masks
-        bytes memory ringSignature
-    ) public {
+        bytes memory ringSignature) public {
         //call precombiled to verify proof
         require(_inputIDs.length < 10, "too many inputs");
         require(_inputIDs.length > 0, "no inputs");
@@ -98,6 +119,7 @@ contract PrivacyCT is RingCTVerifier {
         uint256[3] memory loopVars;
         ringParams[0] = convertBytesToUint(ringSignature, 0, 8);    //numRing
         ringParams[1] = convertBytesToUint(ringSignature, 8, 8);    //ringSize
+        require(_inputIDs.length % (ringParams[1]) == 0);
         require(ComputeSignatureSize(ringParams[0], ringParams[1]) == ringSignature.length);
 
         ringParams[2] = 80 + ringParams[0] * ringParams[1] *32;
@@ -105,17 +127,55 @@ contract PrivacyCT is RingCTVerifier {
 
         //verify public keys is correct, the number of pubkey inputs = ringParams[0] * ringParams[1]
         //pubkeys start from offset: 80 + ringParams[0] * ringParams[1] *32
-        for(loopVars[0] = 0; loopVars[0] < ringParams[0]; loopVars[0]++) {
+        //this look does not verify additional ring -  the last ring
+        for(loopVars[0] = 0; loopVars[0] < ringParams[0] - 1; loopVars[0]++) {
             for(loopVars[1] = 0; loopVars[1] < ringParams[1]; loopVars[1]++) {
                 (bool copied, byte[33] memory pk) = CopyUtils.Copy33Bytes(ringSignature, ringParams[2] + (loopVars[0]*ringParams[1] + loopVars[1])*33);
                 require(copied);
                 require(uint8(pk[0]) % 2 ==
-                    utxos[_inputIDs[loopVars[0]][loopVars[1]]].pubkey.yBit % 2);    //yBit same
+                    utxos[_inputIDs[loopVars[0]*ringParams[0] + loopVars[1]]].pubkey.yBit % 2);    //yBit same
                 require(convertBytes33ToUint(pk,  1, 32) ==
-                    utxos[_inputIDs[loopVars[0]][loopVars[1]]].pubkey.x);
+                    utxos[_inputIDs[loopVars[0]*ringParams[0] + loopVars[1]]].pubkey.x);
             }
         }
 
+        //verify additional ring
+        //compute sum of outputs
+        uint256[2] memory outSum;
+        outSum[0] = _outputs[0];
+        outSum[1] = _outputs[1];
+        for (i = 1; i < _outputs.length.div(6); i++) {
+            (outSum[0], outSum[1]) = Secp256k1.add(outSum[0], outSum[1], _outputs[i*2], _outputs[i*2+1]);
+        }
+
+        for(loopVars[1] = 0; loopVars[1] < ringParams[1]; loopVars[1]++) {
+            uint256[2] memory point = [uint256(0),uint256(0)];
+            //compute sum of: all input pubkeys + all input commitments
+            for(loopVars[0] = 0; loopVars[0] < ringParams[0]; loopVars[0]++) {
+                if (point[0] == 0) {
+                    (point[0], point[1]) = Secp256k1.decompressXY(utxos[_inputIDs[loopVars[0]*ringParams[0] + loopVars[1]]].pubkey.yBit,
+                        utxos[_inputIDs[loopVars[0]*ringParams[0] + loopVars[1]]].pubkey.x);
+                    uint256[2] memory commitment = Secp256k1.decompress(utxos[_inputIDs[loopVars[0]*ringParams[0] + loopVars[1]]].commitment.yBit,
+                        utxos[_inputIDs[loopVars[0]*ringParams[0] + loopVars[1]]].commitment.x);
+                    (point[0], point[1]) = Secp256k1.add(point[0], point[1], commitment[0], commitment[1]);
+                } else {
+                    uint256[2] memory temp = Secp256k1.decompress(utxos[_inputIDs[loopVars[0]*ringParams[0] + loopVars[1]]].pubkey.yBit,
+                        utxos[_inputIDs[loopVars[0]*ringParams[0] + loopVars[1]]].pubkey.x);
+                    (point[0], point[1]) = Secp256k1.add(point[0], point[1], temp[0], temp[1]);
+                    temp = Secp256k1.decompress(utxos[_inputIDs[loopVars[0]*ringParams[0] + loopVars[1]]].commitment.yBit,
+                        utxos[_inputIDs[loopVars[0]*ringParams[0] + loopVars[1]]].commitment.x);
+                    (point[0], point[1]) = Secp256k1.add(point[0], point[1], temp[0], temp[1]);
+                }
+            }
+            //sum - all output commitments
+            (point[0], point[1]) = Secp256k1.sub(point[0], point[1], outSum[0], outSum[1]);
+            (bool copied, byte[33] memory pk) = CopyUtils.Copy33Bytes(ringSignature, ringParams[2] + ((ringParams[0] - 1)*ringParams[1] + loopVars[1])*33);
+            require(copied);
+            (uint8 ybit, uint256 compressX) = Secp256k1.compressXY(point[0], point[1]);
+            //verify sum = the corresponding element in the last/additional ring
+            require(uint8(pk[0]) % 2 == yBit % 2);    //yBit same
+            require(convertBytes33ToUint(pk,  1, 32) == compressX);
+        }
         (bool success, byte[] memory inputData) = CopyUtils.CopyBytes(ringSignature, ringParams[2], ringParams[0]*ringParams[1]);
         require(success);
         bytes32 message;
@@ -162,18 +222,22 @@ contract PrivacyCT is RingCTVerifier {
         //create output UTXOs
         outputLength = _outputs.length.div(6);
         for (i = 0; i < outputLength; i++) {
-            (uint8 yBitC, uint256 xC) = Secp256k1.compressXY(_outputs[i*2], _outputs[i*2 + 1]);
-            emit CompressXYInput(_outputs[i*2], _outputs[i*2 + 1], yBitC + 2);
-            (uint8 yBitPub, uint256 xPub) = Secp256k1.compressXY(_outputs[outputLength*2 + i*2], _outputs[outputLength*2 + i*2 + 1]);
-            emit CompressXYInput(_outputs[outputLength*2 + i*2], _outputs[outputLength*2 + i*2 + 1], yBitPub + 2);
-            (uint8 yBitTxPub, uint256 xTxPub) = Secp256k1.compressXY(_outputs[outputLength*4 + i*2], _outputs[outputLength*4 + i*2 + 1]);
-            emit CompressXYInput(_outputs[outputLength*4 + i*2], _outputs[outputLength*4 + i*2 + 1], yBitTxPub + 2);
+            uint256[3] memory X;
+            uint8[3] memory yBit;
+            (yBit[0], X[0]) = Secp256k1.compressXY(_outputs[i*2], _outputs[i*2 + 1]);
+            emit CompressXYInput(_outputs[i*2], _outputs[i*2 + 1], yBit[0] + 2);
+
+            (yBit[1], X[1]) = Secp256k1.compressXY(_outputs[outputLength*2 + i*2], _outputs[outputLength*2 + i*2 + 1]);
+            emit CompressXYInput(_outputs[outputLength*2 + i*2], _outputs[outputLength*2 + i*2 + 1], yBit[1] + 2);
+
+            (yBit[2], X[2]) = Secp256k1.compressXY(_outputs[outputLength*4 + i*2], _outputs[outputLength*4 + i*2 + 1]);
+            emit CompressXYInput(_outputs[outputLength*4 + i*2], _outputs[outputLength*4 + i*2 + 1], yBit[2] + 2);
 
             utxos.push(UTXO ({
-                commitment: CompressPubKey(yBitC + 2, xC),
-                pubkey: CompressPubKey(yBitPub + 2, xPub),
+                commitment: CompressPubKey(yBit[0] + 2, X[0]),
+                pubkey: CompressPubKey(yBit[1] + 2, X[1]),
                 amount: _amounts[i],
-                txPub: CompressPubKey(yBitTxPub + 2, xTxPub),
+                txPub: CompressPubKey(yBit[2] + 2, X[2]),
                 mask: _amounts[outputLength + i]
                 })
             );
@@ -207,7 +271,7 @@ contract PrivacyCT is RingCTVerifier {
         bytes32[2] memory _rs, address payable recipient,
         uint256[2] memory _commitmentAfter) public {
         //call precombiled to verify proof
-        require(_utxoIndex < utxos.length && !spentUTXOs[_utxoIndex]);
+        require(_utxoIndex < utxos.length);
         temp2[0] = bytesToUint(_rs[0]);
         temp2[1] = bytesToUint(_rs[1]);
         (inputSum[0], inputSum[1]) = Secp256k1.decompressXY(utxos[_utxoIndex].pubkey.yBit - 2, utxos[_utxoIndex].pubkey.x);
@@ -221,7 +285,6 @@ contract PrivacyCT is RingCTVerifier {
         //send money to recipient
         require(recipient != address(0x0), "address not registered yet");
         recipient.transfer(_amount1);
-        spentUTXOs[_utxoIndex] = true;
 
         (inputSum[0], inputSum[1]) = Secp256k1.decompressXY(utxos[_utxoIndex].commitment.yBit - 2, utxos[_utxoIndex].commitment.x);
         (yBit, x) = Secp256k1.mulWithH(_amount1);

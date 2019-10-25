@@ -191,6 +191,13 @@ library Secp256k1 {
         return EllipticCurve.ecAdd(x0, y0, x1, y1, AA, pp);
     }
 
+    function sub(uint256 x0, uint256 y0,
+        uint256 x1, uint256 y1) internal pure
+    returns(uint256, uint256)
+    {
+        return EllipticCurve.ecSub(x0, y0, x1, y1, AA, pp);
+    }
+
     // Multiplication dP. P affine, wNAF: w=5
     // Params: d, Px, Py
     // Output: Jacobian Q

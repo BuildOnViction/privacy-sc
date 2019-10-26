@@ -1,6 +1,7 @@
 var PrivacyContract = artifacts.require("PrivacyCT");
 var Secp256k1 = artifacts.require("Secp256k1");
 var SafeMath = artifacts.require("SafeMath");
+var RingCTVerifier = artifacts.require("RingCTVerifier");
 const axios = require('axios');
 
 async function verifyContractOnScan(contractAddress, contractName, fullcode) {
@@ -32,22 +33,11 @@ async function flattenContract() {
 }
 
 module.exports = function(deployer) {
-    // deployer.deploy(Secp256k1);
-    // deployer.deploy(SafeMath);
-    // deployer.link(Secp256k1, PrivacyContract);
-    // deployer.link(SafeMath, PrivacyContract);
-    return deployer.deploy(PrivacyContract).then(async (result) => {
-      // verify the contract to test net example
-      try {
-        let smartContractAddress = result.address;
-        console.log(smartContractAddress);
-        console.log("result ", result.data);
-      } catch(ex) {
-        console.log(ex);
-      }
-    })
-    .catch(function(err) {
-      console.log(err);
+    deployer.deploy(RingCTVerifier).then((result) => {
+        console.log("result RingCTVerifier ", result.data);
+    });
+    deployer.deploy(PrivacyContract).then((result) => {
+      console.log("result PrivacyContract ", result.data);
     });
     
 };

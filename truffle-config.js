@@ -19,8 +19,8 @@
  */
 
 const HDWalletProvider = require('truffle-hdwallet-provider');
-const privateKey = "786a37d16d0d6877b24b53aafdf7d29c7e53b7be43134c3db7b3e2eedd66ddea";
-const address =  "0x16E409004d62eaFB987DB08F038BFd1FCC77c289";
+const privateKey = "06E77C26DD44F807A67DCE660B8F8D39209100678DEEEFD032214B7BF0A99F02";
+const address =  "0x1901deed3e1AfA53109DbA327B45B6F8Fa1809E1";
 //
 // const fs = require('fs');
 // const mnemonic = fs.readFileSync(".secret").toString().trim();
@@ -44,13 +44,13 @@ module.exports = {
     // options below to some value.
     //
     development: {
-      provider: () => new HDWalletProvider(privateKey, 'https://testnet.tomochain.com'),
-      network_id: 89,
-      gasPrice: 2000000000000, // default gas price in wei, 20 gwei in this case,
-      gas: 10000000,
+      provider: () => new HDWalletProvider(privateKey, 'http://206.189.39.242:8545'),
+      network_id: 88,
+      gasPrice: 20000000000000, // default gas price in wei, 20 gwei in this case,
+      gas: 20000000,
       websockets: true,
       from: address,
-      production: true 
+      // production: true 
     },
 
     // Another network with more advanced options...
@@ -65,14 +65,14 @@ module.exports = {
 
     // Useful for deploying to a public network.
     // NB: It's important to wrap the provider as a function.
-    tomotest: {
-      provider: () => new HDWalletProvider(privateKey, 'https://testnet.tomochain.com'),
-      network_id: 89,
-      gasPrice: '250000000', // default gas price in wei, 20 gwei in this case,
-      gas: '1000000',
-      websockets: true,
-      from: address
-    },
+    // tomotest: {
+    //   provider: () => new HDWalletProvider(privateKey, 'https://testnet.tomochain.com'),
+    //   network_id: 89,
+    //   gasPrice: '250000000', // default gas price in wei, 20 gwei in this case,
+    //   gas: '1000000',
+    //   websockets: true,
+    //   from: address
+    // },
 
     // Useful for private networks
     // private: {

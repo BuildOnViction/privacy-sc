@@ -358,6 +358,10 @@ contract PrivacyCT is RingCTVerifier {
         );
     }
 
+    function isSpent(uint256 keyImage) public view returns (bool) {
+        return keyImagesMapping[keyImage];
+    }
+
     //dont receive any money via default callback
     function () external payable {
         revert();

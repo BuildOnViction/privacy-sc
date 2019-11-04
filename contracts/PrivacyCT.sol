@@ -199,7 +199,7 @@ contract PrivacyCT is RingCTVerifier {
             (bool success, byte[33] memory ki) = CopyUtils.Copy33Bytes(ringSignature, ringParams[3] + loopVars[0]*33);
             require(success);
             uint256 kiHash = bytesToUint(keccak256(abi.encodePacked(ki)));
-            //require(!keyImagesMapping[kiHash], "key image is spent!");
+            require(!keyImagesMapping[kiHash], "key image is spent!");
             keyImagesMapping[kiHash] = true;
         }
 
@@ -368,15 +368,16 @@ contract PrivacyCT is RingCTVerifier {
         );
     }
 
-    function isSpent(uint256 keyImage) public view returns (bool) {
-        return keyImagesMapping[keyImage];
+    function isSpent(byte[33] memory keyImage) public view returns (bool) {
+        uint256 kiHash = bytesToUint(keccak256(abi.encodePacked(keyImage)));
+        return keyImagesMapping[kiHash];
     }
 
     //dont receive any money via default callback
     function () external payable {
         revert();
     }
-    function bytesToUint(bytes32 b) public returns (uint256){
+    function bytesToUint(bytes32 b) public view returns (uint256){
         uint256 number;
         for(uint256 j = 0;j < b.length; j++){
             number = number + (2**(8*(b.length-(j+1))))*uint256(uint8(b[j]));

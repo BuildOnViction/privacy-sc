@@ -4,11 +4,13 @@ import {Secp256k1} from "./Secp256k1.sol";
 import "./SafeMath.sol";
 import "./RingCTVerifier.sol";
 import "./CopyUtils.sol";
+import "./TRC21.sol";
+
 interface IRegistryInterface {
     function getPrivacyAddress(address _normal) external view returns (bytes memory);
     function getNormalAddress(bytes calldata _privacy) external view returns (address);
 }
-contract PrivacyCT is RingCTVerifier {
+contract PrivacyCT is PrivacyTRC21TOMO, RingCTVerifier {
     using SafeMath for uint256;
     struct CompressPubKey {
         uint8 yBit;
@@ -384,7 +386,7 @@ contract PrivacyCT is RingCTVerifier {
         );
     }
 
-    function isSpent(byte[33] memory keyImage) public view returns (bool) {
+    function isSpent(byte[] memory keyImage) public view returns (bool) {
         uint256 kiHash = bytesToUint(keccak256(abi.encodePacked(keyImage)));
         return keyImagesMapping[kiHash];
     }

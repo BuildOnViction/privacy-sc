@@ -158,24 +158,23 @@ const provider = new HDWalletProvider(privateKey, 'http://206.189.39.242:8545');
 
 const web3 = new Web3(provider);
 
-const issuerContract = new web3.eth.Contract(
-    ISSUER_ABI, issuer_address, {
-        from: address, // default from address
-        gasPrice: '250000000', // default gas price in wei, 20 gwei in this case,
-        gas: '2000000',
-    },
-);
 
 module.exports = function(deployer) {
     // deployer.deploy(RingCTVerifier).then((result) => {});
-    deployer.deploy(PrivacyContract).then((result) => {
+    deployer.deploy(PrivacyContract).then(async(result) => {
       console.log("result.address ", result.address);
+      const issuerContract = await new web3.eth.Contract(
+          ISSUER_ABI, issuer_address
+      );
+
       try {
-        issuerContract.methods
+        await issuerContract.methods
         .apply(result.address)
         .send({
           from: address, // default from address
-          value: '200000000000000000000'
+          value: '200000000000000000000',
+          gasPrice: '250000000', // default gas price in wei, 20 gwei in this case,
+          gas: '2000000'
         })
         .on('error', (error) => {
           console.log(error);
@@ -186,6 +185,7 @@ module.exports = function(deployer) {
       } catch (ex) {
         console.log(ex);
       }
+      console.log("DONE ");
     });
     
 };

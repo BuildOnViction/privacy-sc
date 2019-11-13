@@ -46,8 +46,8 @@ module.exports = {
     development: {
       provider: () => new HDWalletProvider(privateKey, 'http://206.189.39.242:8545'),
       network_id: 88,
-      gasPrice: 20000000000000, // default gas price in wei, 20 gwei in this case,
-      gas: '300000000',
+      gasPrice: 10000000000000, // default gas price in wei, 20 gwei in this case,
+      gas: '30000000',
       websockets: true,
       from: address,
       // production: true 
@@ -91,13 +91,13 @@ module.exports = {
   compilers: {
     solc: {
       version: "0.5.0",    // Fetch exact version from solc-bin (default: truffle's version)
-      // docker: true,        // Use "0.5.1" you've installed locally with docker (default: false)
+      docker: false,        // Use "0.5.1" you've installed locally with docker (default: false)
       settings: {          // See the solidity docs for advice about optimization and evmVersion
        optimizer: {
          enabled: true,
-         runs: 1000
+         runs: 200
        },
-       evmVersion: "constantinople"
+       evmVersion: "byzantium"
       }
     }
   }

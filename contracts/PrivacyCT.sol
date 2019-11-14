@@ -10,6 +10,8 @@ interface IRegistryInterface {
     function getPrivacyAddress(address _normal) external view returns (bytes memory);
     function getNormalAddress(bytes calldata _privacy) external view returns (address);
 }
+
+
 contract PrivacyCT is PrivacyTRC21TOMO, RingCTVerifier {
     using SafeMath for uint256;
     struct CompressPubKey {

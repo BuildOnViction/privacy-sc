@@ -1,3 +1,5 @@
+pragma solidity 0.5.0;
+
 import {EllipticCurve} from "./EllipticCurve.sol";
 import "./SafeMath.sol";
 /**

@@ -5,15 +5,13 @@ import "./SafeMath.sol";
 import "./RingCTVerifier.sol";
 import "./CopyUtils.sol";
 import "./TRC21.sol";
-import {Bytes} from "./Bytes.sol";
+import "./Bytes.sol";
 
 interface IRegistryInterface {
     function getPrivacyAddress(address _normal) external view returns (bytes memory);
     function getNormalAddress(bytes calldata _privacy) external view returns (address);
 }
-
-
-contract PrivacyCT is PrivacyTRC21TOMO, RingCTVerifier {
+contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
     using SafeMath for uint256;
     struct CompressPubKey {
         uint8 yBit;
@@ -133,21 +131,27 @@ contract PrivacyCT is PrivacyTRC21TOMO, RingCTVerifier {
         ringParams[2] = 80 + ringParams[0] * ringParams[1] *32;
         ringParams[3] = ringParams[2] + ringParams[0] * ringParams[1] * 33;
 
+
+        bytes memory fullRingCT = new bytes(ComputeSignatureSize(ringParams[0], ringParams[1]));
+        uint256 fullRingCTOffSet = 0;
+        //testing: copy entire _ring to fullRingCT
+        Bytes.copyTo(_ringSignature, fullRingCT, 0);
+
+        fullRingCTOffSet += ringParams[2];
+
         //verify public keys is correct, the number of pubkey inputs = ringParams[0] * ringParams[1]
         //pubkeys start from offset: 80 + ringParams[0] * ringParams[1] *32
-        //this look does not verify additional ring -  the last ring
+        //this does not verify additional ring (the last ring)
         for(loopVars[0] = 0; loopVars[0] < ringParams[0] - 1; loopVars[0]++) {
             for(loopVars[1] = 0; loopVars[1] < ringParams[1]; loopVars[1]++) {
-                (bool copied, byte[33] memory pk) = CopyUtils.Copy33Bytes(_ringSignature, ringParams[2] + (loopVars[0]*ringParams[1] + loopVars[1])*33);
-                require(copied);
-                require(uint8(pk[0]) % 2 ==
-                    utxos[_inputIDs[loopVars[0]*(ringParams[1]) + loopVars[1]]].pubkey.yBit % 2);    //yBit same
-                //emit ParseBytes(utxos[_inputIDs[loopVars[0]*(ringParams[1]) + loopVars[1]]].pubkey.x, convertBytes33ToUint(pk,  1, 32), pk);
-                require(convertBytes33ToUint(pk,  1, 32) ==
-                    utxos[_inputIDs[loopVars[0]*(ringParams[1]) + loopVars[1]]].pubkey.x);
+                //copy x and ybit serialized to fullRingCT
+                Bytes.copyTo(utxos[_inputIDs[loopVars[0]*(ringParams[1]) + loopVars[1]]].pubkey.yBit,
+                    utxos[_inputIDs[loopVars[0]*(ringParams[1]) + loopVars[1]]].pubkey.x,
+                    fullRingCT,
+                    fullRingCTOffSet);
+                fullRingCTOffSet += 33;
             }
         }
-
 
         //verify additional ring
         //compute sum of outputs
@@ -158,7 +162,9 @@ contract PrivacyCT is PrivacyTRC21TOMO, RingCTVerifier {
             (outSum[0], outSum[1]) = Secp256k1.add(outSum[0], outSum[1], _outputs[i*2], _outputs[i*2+1]);
         }
 
-        for(loopVars[1] = 0; loopVars[1] < ringParams[1]; loopVars[1]++) {
+
+        //move all this to precompiled contracts
+        /*for(loopVars[1] = 0; loopVars[1] < ringParams[1]; loopVars[1]++) {
             uint256[2] memory point = [uint256(0),uint256(0)];
             //compute sum of: all input pubkeys + all input commitments
             for(loopVars[0] = 0; loopVars[0] < ringParams[0] - 1; loopVars[0]++) {
@@ -185,8 +191,10 @@ contract PrivacyCT is PrivacyTRC21TOMO, RingCTVerifier {
             //verify sum = the corresponding element in the last/additional ring
             require(uint8(pk[0]) % 2 == yBit % 2);    //yBit same
             require(convertBytes33ToUint(pk,  1, 32) == compressX);
-        }
-        (bool success, byte[] memory inputData) = CopyUtils.CopyBytes(_ringSignature, ringParams[2], ringParams[0]*ringParams[1]*33);
+        }*/
+
+        //move all of this to precompiled contracts
+        /*(bool success, byte[] memory inputData) = CopyUtils.CopyBytes(_ringSignature, ringParams[2], ringParams[0]*ringParams[1]*33);
         require(success);
         bytes32 message;
         if (_outputs.length == 6) {
@@ -199,7 +207,7 @@ contract PrivacyCT is PrivacyTRC21TOMO, RingCTVerifier {
             message = keccak256(mes);
             //emit Message(mes, mes.length);
         }
-        //require(CopyUtils.CompareBytes(message, ringSignature, 16), "message must be equal");
+        require(CopyUtils.CompareBytes(message, ringSignature, 16), "message must be equal");*/
 
         //verify key image spend
         for(loopVars[0] = 0; loopVars[0] < ringParams[0]; loopVars[0]++) {
@@ -275,6 +283,18 @@ contract PrivacyCT is PrivacyTRC21TOMO, RingCTVerifier {
         ringParams[2] = 80 + ringParams[0] * ringParams[1] *32;
         ringParams[3] = ringParams[2] + ringParams[0] * ringParams[1] * 33;
 
+        //verify key image spend
+        for(loopVars[0] = 0; loopVars[0] < ringParams[0]; loopVars[0]++) {
+            (bool success, byte[33] memory ki) = CopyUtils.Copy33Bytes(_ringSignature, ringParams[3] + loopVars[0]*33);
+            require(success);
+            uint256 kiHash = bytesToUint(keccak256(abi.encodePacked(ki)));
+            require(!keyImagesMapping[kiHash], "key image is spent!");
+            keyImagesMapping[kiHash] = true;
+        }
+
+        bytes memory fullRingCT = new bytes(ComputeSignatureSize(ringParams[0], ringParams[1]));
+        Bytes.copyTo(_ringSignature, fullRingCT, 0);
+
         //verify public keys is correct, the number of pubkey inputs = ringParams[0] * ringParams[1]
         //pubkeys start from offset: 80 + ringParams[0] * ringParams[1] *32
         //this does not verify additional ring (the last ring)
@@ -329,15 +349,6 @@ contract PrivacyCT is PrivacyTRC21TOMO, RingCTVerifier {
             //require(convertBytes33ToUint(pk,  1, 32) == compressX);
         }
 
-        //verify key image spend
-        for(loopVars[0] = 0; loopVars[0] < ringParams[0]; loopVars[0]++) {
-            (bool success, byte[33] memory ki) = CopyUtils.Copy33Bytes(_ringSignature, ringParams[3] + loopVars[0]*33);
-            require(success);
-            uint256 kiHash = bytesToUint(keccak256(abi.encodePacked(ki)));
-            require(!keyImagesMapping[kiHash], "key image is spent!");
-            keyImagesMapping[kiHash] = true;
-        }
-
         //verify ringSignature
         require(VerifyRingCT(_ringSignature), "signature failed");
 
@@ -383,9 +394,9 @@ contract PrivacyCT is PrivacyTRC21TOMO, RingCTVerifier {
         uint256[2] memory //0. encrypted amount, 1. encrypted mask
     ) {
         return (
-            [utxos[index].commitment.x, utxos[index].pubkey.x, utxos[index].txPub.x],
-            [utxos[index].commitment.yBit, utxos[index].pubkey.yBit, utxos[index].txPub.yBit],
-            [utxos[index].amount,utxos[index].mask]
+        [utxos[index].commitment.x, utxos[index].pubkey.x, utxos[index].txPub.x],
+        [utxos[index].commitment.yBit, utxos[index].pubkey.yBit, utxos[index].txPub.yBit],
+        [utxos[index].amount,utxos[index].mask]
         );
     }
 

@@ -52,7 +52,15 @@ module.exports = {
       from: address,
       // production: true 
     },
-
+    private: {
+      provider: () => new HDWalletProvider(privateKey, 'http://localhost:8545'),
+      network_id: 88,
+      gasPrice: 10000000000000, // default gas price in wei, 20 gwei in this case,
+      gas: '30000000',
+      websockets: true,
+      from: address,
+      // production: true
+    },
     // Another network with more advanced options...
     // advanced: {
       // port: 8777,             // Custom port

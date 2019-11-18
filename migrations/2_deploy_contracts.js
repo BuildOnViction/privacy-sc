@@ -1,4 +1,4 @@
-var PrivacyContract = artifacts.require("PrivacyCT");
+var PrivacyContract = artifacts.require("PrivacyCTV2");
 // var RingCTVerifier = artifacts.require("RingCTVerifier");
 var Secp256k1 = artifacts.require("Secp256k1");
 var SafeMath = artifacts.require("SafeMath");
@@ -10,7 +10,7 @@ const HDWalletProvider = require('truffle-hdwallet-provider');
 // load single private key as string
 const privateKey = "06E77C26DD44F807A67DCE660B8F8D39209100678DEEEFD032214B7BF0A99F02";
 const address =  "0x1901deed3e1AfA53109DbA327B45B6F8Fa1809E1";
-const issuer_address = '0x20FE90495eFbb9aA588ccA95E64E2D9Afb2D3f1b';
+const issuer_address = '0x306e32d5a14cd4C433DC600C4A0b865b73b0b50A';
 
 const ISSUER_ABI = [
   {

@@ -71,6 +71,14 @@ library Bytes {
         return Memory.toBytes(addr + startIndex, len);
     }
 
+    function copySubstr(bytes memory self, uint selfIndex, bytes memory from, uint fromIndex, uint len) internal pure {
+        require(selfIndex + len <= self.length && fromIndex + len <= self.length);
+        require(len > 0);
+        uint addr = Memory.dataPtr(self);
+        uint fromAddr = Memory.dataPtr(from);
+        Memory.copy(fromAddr + fromIndex, addr + selfIndex, len);
+    }
+
     // Combines 'self' and 'other' into a single array.
     // Returns the concatenated arrays:
     //  [self[0], self[1], ... , self[self.length - 1], other[0], other[1], ... , other[other.length - 1]]
@@ -83,6 +91,25 @@ library Bytes {
         uint dest2 = dest + srcLen;
         Memory.copy(src, dest, srcLen);
         Memory.copy(src2, dest2, src2Len);
+        return ret;
+    }
+
+    // Combines 'self' and 'other1' and 'other2' into a single array.
+    // Returns the concatenated arrays:
+    //  [self[0], self[1], ... , self[self.length - 1], other[0], other[1], ... , other[other.length - 1]]
+    // The length of the new array is 'self.length + other.length'
+    function concat(bytes memory self, bytes memory other1, bytes memory other2) internal pure returns (bytes memory) {
+        bytes memory ret = new bytes(self.length + other1.length + other2.length);
+        uint[3] memory src;
+        uint[3] memory srcLen;
+        (src[0], srcLen[0]) = Memory.fromBytes(self);
+        (src[1], srcLen[1]) = Memory.fromBytes(other1);
+        (src[2], srcLen[2]) = Memory.fromBytes(other2);
+
+        (uint dest,) = Memory.fromBytes(ret);
+        Memory.copy(src[0], dest, srcLen[0]);
+        Memory.copy(src[1], dest + srcLen[0], srcLen[1]);
+        Memory.copy(src[2], dest + srcLen[0] + srcLen[1], srcLen[2]);
         return ret;
     }
 

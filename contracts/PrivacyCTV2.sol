@@ -119,23 +119,23 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
         require(_ringSignature.length > 16);
         //[0]: numRing
         //[1]: ringSize
-        //[2]: public offset
+        //[2]: key images offset
         //[3]: key images offset
         uint256[4] memory ringParams;
         uint256[3] memory loopVars;
         ringParams[0] = convertBytesToUint(_ringSignature, 0, 8);    //numRing
         ringParams[1] = convertBytesToUint(_ringSignature, 8, 8);    //ringSize
         require(_inputIDs.length % (ringParams[1]) == 0);
-        require(ComputeSignatureSize(ringParams[0], ringParams[1]) == _ringSignature.length);
+        //require(ComputeSignatureSize(ringParams[0], ringParams[1]) == _ringSignature.length);
 
         ringParams[2] = 80 + ringParams[0] * ringParams[1] *32;
-        ringParams[3] = ringParams[2] + ringParams[0] * ringParams[1] * 33;
+        ringParams[3] = 80 + ringParams[0] * ringParams[1] *32;
 
 
         bytes memory fullRingCT = new bytes(ComputeSignatureSize(ringParams[0], ringParams[1]));
         uint256 fullRingCTOffSet = 0;
         //testing: copy entire _ring to fullRingCT
-        Bytes.copyTo(_ringSignature, fullRingCT, 0);
+        Bytes.copySubstr(fullRingCT, 0, _ringSignature, 0, ringParams[2]);
 
         fullRingCTOffSet += ringParams[2];
 
@@ -162,17 +162,18 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
             (outSum[0], outSum[1]) = Secp256k1.add(outSum[0], outSum[1], _outputs[i*2], _outputs[i*2+1]);
         }
 
-
         //move all this to precompiled contracts
-        /*for(loopVars[1] = 0; loopVars[1] < ringParams[1]; loopVars[1]++) {
-            uint256[2] memory point = [uint256(0),uint256(0)];
+        for(loopVars[1] = 0; loopVars[1] < ringParams[1]; loopVars[1]++) {
+            uint256[4] memory point = [uint256(0),uint256(0),uint256(0),uint256(0)];
             //compute sum of: all input pubkeys + all input commitments
             for(loopVars[0] = 0; loopVars[0] < ringParams[0] - 1; loopVars[0]++) {
                 if (point[0] == uint256(0)) {
                     (point[0], point[1]) = Secp256k1.decompressXY(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].pubkey.yBit%2,
                         utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].pubkey.x);
+
                     uint256[2] memory commitment = Secp256k1.decompress(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].commitment.yBit%2,
                         utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].commitment.x);
+
                     (point[0], point[1]) = Secp256k1.add(point[0], point[1], commitment[0], commitment[1]);
                 } else {
                     uint256[2] memory temp = Secp256k1.decompress(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].pubkey.yBit%2,
@@ -184,14 +185,27 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
                 }
             }
             //sum - all output commitments
-            (point[0], point[1]) = Secp256k1.sub(point[0], point[1], outSum[0], outSum[1]);
-            (bool copied, byte[33] memory pk) = CopyUtils.Copy33Bytes(_ringSignature, ringParams[2] + ((ringParams[0] - 1)*ringParams[1] + loopVars[1])*33);
-            require(copied);
-            (uint8 ybit, uint256 compressX) = Secp256k1.compressXY(point[0], point[1]);
+            //(point[0], point[1]) = Secp256k1.sub(point[0], point[1], outSum[0], outSum[1]);
+            //(bool copied, byte[33] memory pk) = CopyUtils.Copy33Bytes(_ringSignature, ringParams[2] + ((ringParams[0] - 1)*ringParams[1] + loopVars[1])*33);
+            //require(copied);
+            //(uint8 ybit, uint256 compressX) = Secp256k1.compressXY(point[0], point[1]);
+            //emit InputSum(outSum[0], outSum[1]);
+
+            //emit InputSum(uint256(yBit), compressX);
+            //emit OutputSum(uint256(uint8(pk[0])), convertBytes33ToUint(pk,  1, 32));
             //verify sum = the corresponding element in the last/additional ring
-            require(uint8(pk[0]) % 2 == yBit % 2);    //yBit same
-            require(convertBytes33ToUint(pk,  1, 32) == compressX);
-        }*/
+            //require(uint8(pk[0]) % 2 == yBit % 2);    //yBit same
+            //require(convertBytes33ToUint(pk,  1, 32) == compressX);
+
+            //(point[2], point[3]) = Secp256k1.decompressXY(uint8(pk[0])%2, convertBytes33ToUint(pk,  1, 32));
+            (point[0], point[1]) = Secp256k1.sub(point[0], point[1], outSum[0], outSum[1]);
+            (uint8 ybit, uint256 compressX) = Secp256k1.compressXY(point[0], point[1]);
+
+            Bytes.copyTo(yBit%2 + 2, compressX, fullRingCT, fullRingCTOffSet);
+            fullRingCTOffSet += 33;
+        }
+
+        Bytes.copySubstr(fullRingCT, fullRingCTOffSet, _ringSignature, ringParams[2], ringParams[0]*33);
 
         //move all of this to precompiled contracts
         /*(bool success, byte[] memory inputData) = CopyUtils.CopyBytes(_ringSignature, ringParams[2], ringParams[0]*ringParams[1]*33);
@@ -218,8 +232,9 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
             keyImagesMapping[kiHash] = true;
         }
 
+
         //verify ringSignature
-        require(VerifyRingCT(_ringSignature), "signature failed");
+        require(VerifyRingCTWithMessage(fullRingCT), "signature failed");
 
         //create output UTXOs
         outputLength = _outputs.length.div(6);

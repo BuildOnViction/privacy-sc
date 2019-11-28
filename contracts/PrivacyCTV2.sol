@@ -15,6 +15,7 @@ interface IRegistryInterface {
 }
 contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
     using SafeMath for uint256;
+    using UnitUtils for uint256;
     struct CompressPubKey {
         uint8 yBit;
         uint256 x;
@@ -84,7 +85,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
         txPub[0] = _txPubKeyX;
         txPub[1] = _txPubKeyY;
         require(Secp256k1.onCurve(txPub));
-        (uint8 _ybitComitment, uint xCommitment) = Secp256k1.pedersenCommitment(_mask, msg.value);
+        (uint8 _ybitComitment, uint xCommitment) = Secp256k1.pedersenCommitment(_mask, msg.value.Wei2Gwei());
         (uint8 pybit, uint px) = Secp256k1.compress(stealth);
         (uint8 txybit, uint txx) = Secp256k1.compress(txPub);
         utxos.push(UTXO ({
@@ -316,7 +317,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
         //compute sum of outputs
         uint256[2] memory outSum;
         //withdrawal amount to commitment
-        (outSum[0], outSum[1]) = Secp256k1.mulWithHToPoint(_withdrawalAmount);
+        (outSum[0], outSum[1]) = Secp256k1.mulWithHToPoint(_withdrawalAmount.Gwei2Wei());
         (outSum[0], outSum[1]) = Secp256k1.add(outSum[0], outSum[1], _outputs[0], _outputs[1]);
 
         for (i = 1; i < _outputs.length.div(6); i++) {
@@ -361,7 +362,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
         //require(VerifyRingCT(fullRingCT), "signature failed");
 
         //transfer
-        _recipient.transfer(_withdrawalAmount);
+        _recipient.transfer(_withdrawalAmount.Gwei2Wei());
 
         uint256[3] memory X;
         uint8[3] memory yBit;

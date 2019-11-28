@@ -126,6 +126,17 @@ library Secp256k1 {
         (yBit, x) = compressXY(qx, qy);
     }
 
+    function mulWithHToPoint(uint256 privKey) internal pure returns(uint256 x, uint256 y) {
+        (x, y) = EllipticCurve.ecMul(
+            privKey,
+            Hx,
+            Hy,
+            AA,
+            pp
+        );
+
+    }
+
     /// @dev See Curve.compress
     function compress(uint[2] memory P) internal pure returns (uint8 yBit, uint x) {
         assert(P.length == 2);

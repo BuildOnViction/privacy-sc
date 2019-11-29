@@ -16,6 +16,10 @@ interface IRegistryInterface {
 contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
     using SafeMath for uint256;
     using UnitUtils for uint256;
+
+    constant uint256 DEPOSIT_FEE = 10**6;//deposit fee = 0.001 TOMO = 10^6 GWEI
+    constant uint256 FLAT_FEE = 10**7;//send & withdraw fee = 0.01 TOMO = 10^7 GWEI
+
     struct CompressPubKey {
         uint8 yBit;
         uint256 x;
@@ -77,6 +81,8 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
         uint256 _mask,
         uint256 _amount,
         uint256 _encodedMask) external payable {
+        require(msg.value.Wei2Gwei() > DEPOSIT_FEE, "deposit amount must be strictly greater than deposit fee");
+
         uint[2] memory stealth;
         stealth[0] = _pubkeyX;
         stealth[1] = _pubkeyY;
@@ -85,7 +91,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
         txPub[0] = _txPubKeyX;
         txPub[1] = _txPubKeyY;
         require(Secp256k1.onCurve(txPub));
-        (uint8 _ybitComitment, uint xCommitment) = Secp256k1.pedersenCommitment(_mask, msg.value.Wei2Gwei());
+        (uint8 _ybitComitment, uint xCommitment) = Secp256k1.pedersenCommitment(_mask, msg.value.Wei2Gwei().sub(DEPOSIT_FEE));
         (uint8 pybit, uint px) = Secp256k1.compress(stealth);
         (uint8 txybit, uint txx) = Secp256k1.compress(txPub);
         utxos.push(UTXO ({
@@ -331,7 +337,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
         Bytes.copySubstr(fullRingCT, fullRingCTOffSet, _ringSignature, ringParams[3], ringParams[0]*33);
 
         //verify ringSignature
-        //require(VerifyRingCT(fullRingCT), "signature failed");
+        require(VerifyRingCT(fullRingCT), "signature failed");
 
         //transfer
         _recipient.transfer(_withdrawalAmount.Gwei2Wei());
@@ -357,6 +363,11 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
             [utxos[utxos.length - 1].amount, utxos[utxos.length - 1].mask],
             utxos.length - 1);
     }
+
+    function addNewUTXO() internal {
+
+    }
+
     function storeTxData(byte[] memory proof, bool parseOutput) private {
         uint8 rs = uint8(proof[0]);
         uint8 numInput = uint8(proof[1]);

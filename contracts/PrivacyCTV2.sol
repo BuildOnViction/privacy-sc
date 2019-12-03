@@ -27,6 +27,12 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
     uint256[2] temp2;
     address RegistryContract = 0xbb32d285e4cF30d439F8106bbA926941730fbf1E;
 
+    struct RawUTXO {
+        uint256[3] XBits;
+        uint8[3] YBits;
+        uint256[2] encodeds;
+    }
+
     struct UTXO {
         CompressPubKey commitment;
         CompressPubKey pubkey;
@@ -379,6 +385,22 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
         [utxos[index].commitment.yBit, utxos[index].pubkey.yBit, utxos[index].txPub.yBit],
         [utxos[index].amount,utxos[index].mask]
         );
+    }
+
+    function getUTXOs(uint256[] memory indexs) public view returns (RawUTXO[] memory) {
+        RawUTXO[] memory utxs = new RawUTXO[](indexs.length);
+        require(indexs.length < 20);
+
+        for(uint8 i = 0; i < indexs.length; i++) {
+            uint256 index = indexs[i];
+            // utxs.length += 1;
+            RawUTXO memory utxo = utxs[i];
+            utxo.XBits = [utxos[index].commitment.x, utxos[index].pubkey.x, utxos[index].txPub.x];
+            utxo.YBits = [utxos[index].commitment.yBit, utxos[index].pubkey.yBit, utxos[index].txPub.yBit];
+            utxo.encodeds = [utxos[index].amount,utxos[index].mask];
+        }
+
+        return utxs;
     }
 
     function isSpent(byte[] memory keyImage) public view returns (bool) {

@@ -20,7 +20,6 @@ const provider = new HDWalletProvider(privateKey, 'http://206.189.39.242:8545');
 
 const web3 = new Web3(provider);
 
-
 module.exports = function(deployer) {
     // deployer.deploy(RingCTVerifier).then((result) => {});
     deployer.deploy(PrivacyContract).then(async(result) => {

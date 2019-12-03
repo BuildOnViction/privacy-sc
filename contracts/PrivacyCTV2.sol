@@ -152,16 +152,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
         //verify public keys is correct, the number of pubkey inputs = ringParams[0] * ringParams[1]
         //pubkeys start from offset: 80 + ringParams[0] * ringParams[1] *32
         //this does not verify additional ring (the last ring)
-        for(loopVars[0] = 0; loopVars[0] < ringParams[0] - 1; loopVars[0]++) {
-            for(loopVars[1] = 0; loopVars[1] < ringParams[1]; loopVars[1]++) {
-                //copy x and ybit serialized to fullRingCT
-                Bytes.copyTo(utxos[_inputIDs[loopVars[0]*(ringParams[1]) + loopVars[1]]].pubkey.yBit,
-                    utxos[_inputIDs[loopVars[0]*(ringParams[1]) + loopVars[1]]].pubkey.x,
-                    fullRingCT,
-                    fullRingCTOffSet);
-                fullRingCTOffSet += 33;
-            }
-        }
+        fullRingCTOffSet = copyRingKeys(fullRingCT, fullRingCTOffSet, _inputIDs, ringParams[0], ringParams[1]);
 
         //verify additional ring
         //compute sum of outputs
@@ -172,46 +163,12 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
             (outSum[0], outSum[1]) = Secp256k1.add(outSum[0], outSum[1], _outputs[i*2], _outputs[i*2+1]);
         }
 
-        for(loopVars[1] = 0; loopVars[1] < ringParams[1]; loopVars[1]++) {
-            uint256[4] memory point = [uint256(0),uint256(0),uint256(0),uint256(0)];
-            //compute sum of: all input pubkeys + all input commitments
-            for(loopVars[0] = 0; loopVars[0] < ringParams[0] - 1; loopVars[0]++) {
-                if (point[0] == uint256(0)) {
-                    (point[0], point[1]) = Secp256k1.decompressXY(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].pubkey.yBit%2,
-                        utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].pubkey.x);
-
-                    uint256[2] memory commitment = Secp256k1.decompress(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].commitment.yBit%2,
-                        utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].commitment.x);
-
-                    (point[0], point[1]) = Secp256k1.add(point[0], point[1], commitment[0], commitment[1]);
-                } else {
-                    uint256[2] memory temp = Secp256k1.decompress(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].pubkey.yBit%2,
-                        utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].pubkey.x);
-                    (point[0], point[1]) = Secp256k1.add(point[0], point[1], temp[0], temp[1]);
-                    temp = Secp256k1.decompress(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].commitment.yBit%2,
-                        utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].commitment.x);
-                    (point[0], point[1]) = Secp256k1.add(point[0], point[1], temp[0], temp[1]);
-                }
-            }
-
-            //(point[2], point[3]) = Secp256k1.decompressXY(uint8(pk[0])%2, convertBytes33ToUint(pk,  1, 32));
-            (point[0], point[1]) = Secp256k1.sub(point[0], point[1], outSum[0], outSum[1]);
-            (uint8 ybit, uint256 compressX) = Secp256k1.compressXY(point[0], point[1]);
-
-            Bytes.copyTo(yBit%2 + 2, compressX, fullRingCT, fullRingCTOffSet);
-            fullRingCTOffSet += 33;
-        }
+        fullRingCTOffSet = computeAdditionalRingKeys(_inputIDs, fullRingCT, ringParams, fullRingCTOffSet, outSum);
 
         Bytes.copySubstr(fullRingCT, fullRingCTOffSet, _ringSignature, ringParams[3], ringParams[0]*33);
 
         //verify key image spend
-        for(loopVars[0] = 0; loopVars[0] < ringParams[0]; loopVars[0]++) {
-            (bool success, byte[33] memory ki) = CopyUtils.Copy33Bytes(_ringSignature, ringParams[3] + loopVars[0]*33);
-            require(success);
-            uint256 kiHash = bytesToUint(keccak256(abi.encodePacked(ki)));
-            require(!keyImagesMapping[kiHash], "key image is spent!");
-            keyImagesMapping[kiHash] = true;
-        }
+        verifyKeyImageSpent(ringParams[0], _ringSignature, ringParams[3]);
 
 
         //verify ringSignature
@@ -241,6 +198,67 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
                 [utxos[utxos.length - 1].amount, utxos[utxos.length - 1].mask],
                 utxos.length - 1);
         }
+    }
+
+    function copyRingKeys(bytes memory _dest, uint256 _inOffset, uint256[] memory _inputIDs, uint256 _numRing, uint256 _ringSize) internal returns (uint256) {
+        uint256 offset = _inOffset;
+        for(uint256 loopVars0 = 0; loopVars0 < _numRing - 1; loopVars0++) {
+            for(uint256 loopVars1 = 0; loopVars1 < _ringSize; loopVars1++) {
+                //copy x and ybit serialized to fullRingCT
+                Bytes.copyTo(
+                        utxos[_inputIDs[loopVars0*(_ringSize) + loopVars1]].pubkey.yBit,
+                        utxos[_inputIDs[loopVars0*(_ringSize) + loopVars1]].pubkey.x,
+                        _dest, offset
+                    );
+                offset += 33;
+            }
+        }
+        return offset;
+    }
+
+    function verifyKeyImageSpent(uint256 _numRing, bytes memory _ringSignature, uint256 _from) internal {
+        for(uint256 loopVars = 0; loopVars < _numRing; loopVars++) {
+            (bool success, byte[33] memory ki) = CopyUtils.Copy33Bytes(_ringSignature, _from + loopVars*33);
+            require(success);
+            uint256 kiHash = bytesToUint(keccak256(abi.encodePacked(ki)));
+            require(!keyImagesMapping[kiHash], "key image is spent!");
+            keyImagesMapping[kiHash] = true;
+        }
+    }
+
+    function computeAdditionalRingKeys(uint256[] memory _inputIDs, bytes memory fullRingCT, uint256[4] memory ringParams, uint256 _inOffset, uint256[2] memory outSum) internal returns (uint256){
+        uint256 fullRingCTOffSet = _inOffset;
+        uint256[2] memory loopVars;
+        for(loopVars[1] = 0; loopVars[1] < ringParams[1]; loopVars[1]++) {
+            uint256[4] memory point = [uint256(0),uint256(0),uint256(0),uint256(0)];
+            //compute sum of: all input pubkeys + all input commitments
+            for(loopVars[0] = 0; loopVars[0] < ringParams[0] - 1; loopVars[0]++) {
+                if (point[0] == uint256(0)) {
+                    (point[0], point[1]) = Secp256k1.decompressXY(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].pubkey.yBit%2,
+                        utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].pubkey.x);
+
+                    uint256[2] memory commitment = Secp256k1.decompress(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].commitment.yBit%2,
+                        utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].commitment.x);
+
+                    (point[0], point[1]) = Secp256k1.add(point[0], point[1], commitment[0], commitment[1]);
+                } else {
+                    uint256[2] memory temp = Secp256k1.decompress(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].pubkey.yBit%2,
+                        utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].pubkey.x);
+                    (point[0], point[1]) = Secp256k1.add(point[0], point[1], temp[0], temp[1]);
+                    temp = Secp256k1.decompress(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].commitment.yBit%2,
+                        utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].commitment.x);
+                    (point[0], point[1]) = Secp256k1.add(point[0], point[1], temp[0], temp[1]);
+                }
+            }
+
+            //(point[2], point[3]) = Secp256k1.decompressXY(uint8(pk[0])%2, convertBytes33ToUint(pk,  1, 32));
+            (point[0], point[1]) = Secp256k1.sub(point[0], point[1], outSum[0], outSum[1]);
+            (uint8 ybit, uint256 compressX) = Secp256k1.compressXY(point[0], point[1]);
+
+            Bytes.copyTo(yBit%2 + 2, compressX, fullRingCT, fullRingCTOffSet);
+            fullRingCTOffSet += 33;
+        }
+        return fullRingCTOffSet;
     }
 
 
@@ -284,13 +302,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
         ringParams[3] = ringParams[2];
 
         //verify key image spend
-        for(loopVars[0] = 0; loopVars[0] < ringParams[0]; loopVars[0]++) {
-            (bool success, byte[33] memory ki) = CopyUtils.Copy33Bytes(_ringSignature, ringParams[3] + loopVars[0]*33);
-            require(success);
-            uint256 kiHash = bytesToUint(keccak256(abi.encodePacked(ki)));
-            require(!keyImagesMapping[kiHash], "key image is spent!");
-            keyImagesMapping[kiHash] = true;
-        }
+        verifyKeyImageSpent(ringParams[0], _ringSignature, ringParams[3]);
 
         bytes memory fullRingCT = new bytes(ComputeSignatureSize(ringParams[0], ringParams[1]));
         uint256 fullRingCTOffSet = 0;
@@ -302,16 +314,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
         //verify public keys is correct, the number of pubkey inputs = ringParams[0] * ringParams[1]
         //pubkeys start from offset: 80 + ringParams[0] * ringParams[1] *32
         //this does not verify additional ring (the last ring)
-        for(loopVars[0] = 0; loopVars[0] < ringParams[0] - 1; loopVars[0]++) {
-            for(loopVars[1] = 0; loopVars[1] < ringParams[1]; loopVars[1]++) {
-                //copy x and ybit serialized to fullRingCT
-                Bytes.copyTo(utxos[_inputIDs[loopVars[0]*(ringParams[1]) + loopVars[1]]].pubkey.yBit,
-                    utxos[_inputIDs[loopVars[0]*(ringParams[1]) + loopVars[1]]].pubkey.x,
-                    fullRingCT,
-                    fullRingCTOffSet);
-                fullRingCTOffSet += 33;
-            }
-        }
+        fullRingCTOffSet = copyRingKeys(fullRingCT, fullRingCTOffSet, _inputIDs, ringParams[0], ringParams[1]);
 
         //verify additional ring
         //compute sum of outputs
@@ -320,39 +323,8 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
         (outSum[0], outSum[1]) = Secp256k1.mulWithHToPoint(_withdrawalAmount.Gwei2Wei());
         (outSum[0], outSum[1]) = Secp256k1.add(outSum[0], outSum[1], _outputs[0], _outputs[1]);
 
-        for (i = 1; i < _outputs.length.div(6); i++) {
-            (outSum[0], outSum[1]) = Secp256k1.add(outSum[0], outSum[1], _outputs[i*2], _outputs[i*2+1]);
-        }
-
         //compute additional ring
-        for(loopVars[1] = 0; loopVars[1] < ringParams[1]; loopVars[1]++) {
-            uint256[4] memory point = [uint256(0),uint256(0),uint256(0),uint256(0)];
-            //compute sum of: all input pubkeys + all input commitments
-            for(loopVars[0] = 0; loopVars[0] < ringParams[0] - 1; loopVars[0]++) {
-                if (point[0] == uint256(0)) {
-                    (point[0], point[1]) = Secp256k1.decompressXY(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].pubkey.yBit%2,
-                        utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].pubkey.x);
-
-                    uint256[2] memory commitment = Secp256k1.decompress(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].commitment.yBit%2,
-                        utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].commitment.x);
-
-                    (point[0], point[1]) = Secp256k1.add(point[0], point[1], commitment[0], commitment[1]);
-                } else {
-                    uint256[2] memory temp = Secp256k1.decompress(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].pubkey.yBit%2,
-                        utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].pubkey.x);
-                    (point[0], point[1]) = Secp256k1.add(point[0], point[1], temp[0], temp[1]);
-                    temp = Secp256k1.decompress(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].commitment.yBit%2,
-                        utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].commitment.x);
-                    (point[0], point[1]) = Secp256k1.add(point[0], point[1], temp[0], temp[1]);
-                }
-            }
-
-            (point[0], point[1]) = Secp256k1.sub(point[0], point[1], outSum[0], outSum[1]);
-            (uint8 ybit, uint256 compressX) = Secp256k1.compressXY(point[0], point[1]);
-
-            Bytes.copyTo(yBit%2 + 2, compressX, fullRingCT, fullRingCTOffSet);
-            fullRingCTOffSet += 33;
-        }
+        fullRingCTOffSet = computeAdditionalRingKeys(_inputIDs, fullRingCT, ringParams, fullRingCTOffSet, outSum);
 
 
         //copy key images

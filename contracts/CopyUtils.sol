@@ -53,4 +53,28 @@ library CopyUtils {
             return (true, ret);
         }
     }
+
+    function BytesToUint(bytes32 b) internal view returns (uint256){
+        uint256 number;
+        for(uint256 j = 0;j < b.length; j++){
+            number = number + (2**(8*(b.length-(j+1))))*uint256(uint8(b[j]));
+        }
+        return number;
+    }
+
+    function ConvertBytesToUint(bytes memory b, uint256 _start, uint256 _size) internal view returns (uint256){
+        uint256 number;
+        for(uint256 j = 0; j < _size; j++){
+            number = number + (2**(8*(_size - (j+1))))*uint256(uint8(b[j + _start]));
+        }
+        return number;
+    }
+
+    function ConvertBytes33ToUint(byte[33] memory b, uint256 _start, uint256 _size) internal view returns (uint256){
+        uint256 number;
+        for(uint256 j = 0; j < _size; j++){
+            number = number + (2**(8*(_size - (j+1))))*uint256(uint8(b[j + _start]));
+        }
+        return number;
+    }
 }

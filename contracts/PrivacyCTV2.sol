@@ -101,8 +101,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
 
         transferFee(DEPOSIT_FEE);
     }
-    event Inputs(uint256[] _inputIDs);
-    event ParseBytes(uint256 _input, uint256 _checked, byte[33] raw);
+
     /**Send TOMO/Token privately
     *@param {_inputIDs} The index IDs of all decoys in all input rings, data is structured as [ring00,ring01,ring02,ring11...]
     *@param {_outputs} commitments, stealth addresses and transaction pubkeys of outputs produced by this private send
@@ -127,8 +126,8 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
         //[3]: key images offset
         uint256[4] memory ringParams;
         uint256[3] memory loopVars;
-        ringParams[0] = convertBytesToUint(_ringSignature, 0, 8);    //numRing
-        ringParams[1] = convertBytesToUint(_ringSignature, 8, 8);    //ringSize
+        ringParams[0] = CopyUtils.ConvertBytesToUint(_ringSignature, 0, 8);    //numRing
+        ringParams[1] = CopyUtils.ConvertBytesToUint(_ringSignature, 8, 8);    //ringSize
         require(_inputIDs.length % (ringParams[1]) == 0);
         require(ComputeSignatureSize(ringParams[0], ringParams[1]) == _ringSignature.length + ringParams[0]*ringParams[1]*33);
 
@@ -213,7 +212,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
         for(uint256 loopVars = 0; loopVars < _numRing; loopVars++) {
             (bool success, byte[33] memory ki) = CopyUtils.Copy33Bytes(_ringSignature, _from + loopVars*33);
             require(success);
-            uint256 kiHash = bytesToUint(keccak256(abi.encodePacked(ki)));
+            uint256 kiHash = CopyUtils.BytesToUint(keccak256(abi.encodePacked(ki)));
             require(!keyImagesMapping[kiHash], "key image is spent!");
             keyImagesMapping[kiHash] = true;
         }
@@ -283,8 +282,8 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
         //[3]: key images offset
         uint256[4] memory ringParams;
         uint256[3] memory loopVars;
-        ringParams[0] = convertBytesToUint(_ringSignature, 0, 8);    //numRing
-        ringParams[1] = convertBytesToUint(_ringSignature, 8, 8);    //ringSize
+        ringParams[0] = CopyUtils.ConvertBytesToUint(_ringSignature, 0, 8);    //numRing
+        ringParams[1] = CopyUtils.ConvertBytesToUint(_ringSignature, 8, 8);    //ringSize
 
         require(_inputIDs.length % (ringParams[1]) == 0);
 
@@ -390,35 +389,12 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
     }
 
     function isSpent(byte[] memory keyImage) public view returns (bool) {
-        uint256 kiHash = bytesToUint(keccak256(abi.encodePacked(keyImage)));
+        uint256 kiHash = CopyUtils.BytesToUint(keccak256(abi.encodePacked(keyImage)));
         return keyImagesMapping[kiHash];
     }
 
     //dont receive any money via default callback
     function () external payable {
         revert();
-    }
-    function bytesToUint(bytes32 b) public view returns (uint256){
-        uint256 number;
-        for(uint256 j = 0;j < b.length; j++){
-            number = number + (2**(8*(b.length-(j+1))))*uint256(uint8(b[j]));
-        }
-        return number;
-    }
-
-    function convertBytesToUint(bytes memory b, uint256 _start, uint256 _size) public returns (uint256){
-        uint256 number;
-        for(uint256 j = 0; j < _size; j++){
-            number = number + (2**(8*(_size - (j+1))))*uint256(uint8(b[j + _start]));
-        }
-        return number;
-    }
-
-    function convertBytes33ToUint(byte[33] memory b, uint256 _start, uint256 _size) public returns (uint256){
-        uint256 number;
-        for(uint256 j = 0; j < _size; j++){
-            number = number + (2**(8*(_size - (j+1))))*uint256(uint8(b[j + _start]));
-        }
-        return number;
     }
 }

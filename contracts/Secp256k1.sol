@@ -138,16 +138,20 @@ library Secp256k1 {
     }
 
     /// @dev See Curve.compress
-    function compress(uint[2] memory P) internal pure returns (uint8 yBit, uint x) {
+    function compress(uint[2] memory P) internal pure returns (uint8, uint) {
         assert(P.length == 2);
-        (yBit, x) = compressXY(P[0], P[1]);
+        return compressXY(P[0], P[1]);
     }
 
     function compressXY(uint _x, uint _y) internal pure returns (uint8 yBit, uint x) {
         x = _x;
-        if ((_y.add(uint256(0))) % 2 == 0)
+        yBit = ((_y & 1)==1) ? 1 : 0;
+        (uint X, uint Y) = decompressXY(yBit, x);
+        if (X != x || Y != _y) yBit = yBit==1? 0: 1;
+        /*if ((_y.add(uint256(0))) % 2 == 0)
             yBit = 0;
-        else yBit = 1;
+        else yBit = 1;*/
+        return (yBit, x);
     }
 
     /// @dev See Curve.decompress

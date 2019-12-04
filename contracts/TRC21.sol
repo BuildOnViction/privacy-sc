@@ -9,7 +9,7 @@ interface ITRC21 {
 
     function balanceOf(address who) external view returns (uint256);
 
-    function issuer() external view returns (address);
+    function issuer() external view returns (address payable);
 
     function estimateFee(uint256 value) external view returns (uint256);
 
@@ -37,7 +37,7 @@ contract TRC21 is ITRC21 {
 
     mapping (address => uint256) private _balances;
     uint256 private _minFee;
-    address private _issuer;
+    address payable private _issuer;
     mapping (address => mapping (address => uint256)) private _allowed;
     uint256 private _totalSupply;
 
@@ -58,7 +58,7 @@ contract TRC21 is ITRC21 {
     /**
      * @dev token's foundation
      */
-    function issuer() public view returns (address) {
+    function issuer() public view returns (address payable) {
         return _issuer;
     }
 
@@ -175,7 +175,7 @@ contract TRC21 is ITRC21 {
      * @dev Transfers token's foundation to new issuer
      * @param newIssuer The address to transfer ownership to.
      */
-    function _changeIssuer(address newIssuer) internal {
+    function _changeIssuer(address payable newIssuer) internal {
         require(newIssuer != address(0));
         _issuer = newIssuer;
     }

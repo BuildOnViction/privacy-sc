@@ -55,16 +55,6 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
         uint8[3] _YBits,        //commitmentYBit, pubkeyYBit, _txPubYBit
         uint256[2] _amount,
         uint256 _index);
-
-    event NewTransaction(uint256 _time, uint256[] _utxoIndexs);
-
-    event InputSum(uint256 _in1, uint256 _in2);
-    event OutputSum(uint256 _out1, uint256 _out2);
-    event CompressXYInput(uint256 _in1, uint256 _in2, uint8 yBit);
-    event CommitmentInput(uint8 _yBit, uint256 _X);
-    event HashSign(bytes32 _hash);
-    event RingParams(uint256 _numRing, uint256 _ringSize, uint256 _inputLength, uint256 _actualRingProofSize);
-    event Message(bytes _raw, uint256 _length);
     event TransactionFee(address _issuer, uint256 _amount);
 
     /**the first step for every one to use private transactions is deposit to the contract

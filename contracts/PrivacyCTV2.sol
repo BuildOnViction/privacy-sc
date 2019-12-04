@@ -17,18 +17,13 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
     using SafeMath for uint256;
     using UnitUtils for uint256;
 
-    constant uint256 DEPOSIT_FEE = 10**6;//deposit fee = 0.001 TOMO = 10^6 GWEI
-    constant uint256 FLAT_FEE = 10**7;//send & withdraw fee = 0.01 TOMO = 10^7 GWEI
+    uint256 constant DEPOSIT_FEE = 10**6;//deposit fee = 0.001 TOMO = 10^6 GWEI
+    uint256 constant FEE = 10**7;//send & withdraw fee = 0.01 TOMO = 10^7 GWEI
 
     struct CompressPubKey {
         uint8 yBit;
         uint256 x;
     }
-    uint i;
-    uint outputLength;
-    uint8 yBit;
-    uint x;
-    uint256[2] temp2;
     address RegistryContract = 0xbb32d285e4cF30d439F8106bbA926941730fbf1E;
 
     struct UTXO {
@@ -107,10 +102,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
             [lastUTXO.amount, lastUTXO.mask],
             utxos.length.sub(1));
 
-        /*Transaction memory tx;
-        txs.push(tx);
-        txs[txs.length.sub(1)].utxos.push(utxos.length.sub(1));
-        emit NewTransaction(now, txs[txs.length.sub(1)].utxos);*/
+        transferFee(DEPOSIT_FEE);
     }
     event Inputs(uint256[] _inputIDs);
     event ParseBytes(uint256 _input, uint256 _checked, byte[33] raw);
@@ -147,7 +139,6 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
         //ringParams[3] = 80 + ringParams[0] * ringParams[1] *32;
         ringParams[3] = ringParams[2];//ringParams[2] + ringParams[0] * ringParams[1] * 33;
 
-
         bytes memory fullRingCT = new bytes(ComputeSignatureSize(ringParams[0], ringParams[1]));
         uint256 fullRingCTOffSet = 0;
         //testing: copy entire _ring to fullRingCT
@@ -163,9 +154,9 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
         //verify additional ring
         //compute sum of outputs
         uint256[2] memory outSum;
-        outSum[0] = _outputs[0];
-        outSum[1] = _outputs[1];
-        for (i = 1; i < _outputs.length.div(6); i++) {
+        //adding fee to sum of output commitments
+        (outSum[0], outSum[1]) = Secp256k1.mulWithHToPoint(FEE);
+        for (uint256 i = 0; i < _outputs.length.div(6); i++) {
             (outSum[0], outSum[1]) = Secp256k1.add(outSum[0], outSum[1], _outputs[i*2], _outputs[i*2+1]);
         }
 
@@ -178,10 +169,11 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
 
         //verify ringSignature
         require(VerifyRingCT(fullRingCT), "signature failed");
+        transferFee(FEE);
 
         //create output UTXOs
-        outputLength = _outputs.length.div(6);
-        for (i = 0; i < outputLength; i++) {
+        uint256 outputLength = _outputs.length.div(6);
+        for (uint256 i = 0; i < outputLength; i++) {
             uint256[3] memory X;
             uint8[3] memory yBit;
             (yBit[0], X[0]) = Secp256k1.compressXY(_outputs[i*2], _outputs[i*2 + 1]);
@@ -257,12 +249,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
 
             //(point[2], point[3]) = Secp256k1.decompressXY(uint8(pk[0])%2, convertBytes33ToUint(pk,  1, 32));
             (point[2], point[3]) = Secp256k1.sub(point[0], point[1], outSum[0], outSum[1]);
-            (uint8 ybit, uint256 compressX) = Secp256k1.compressXY(point[2], point[3]);
-            (point[6], point[7]) = Secp256k1.decompressXY(yBit, compressX);
-            if (point[2] != point[6] || point[3] != point[7]) {
-                yBit = yBit==1? 0: 1;
-                (point[6], point[7]) = Secp256k1.decompressXY(yBit, compressX);
-            }
+            (uint8 yBit, uint256 compressX) = Secp256k1.compressXY(point[2], point[3]);
             Bytes.copyTo(yBit + 2, compressX, fullRingCT, fullRingCTOffSet);
             fullRingCTOffSet += 33;
         }
@@ -327,8 +314,8 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
         //verify additional ring
         //compute sum of outputs
         uint256[2] memory outSum;
-        //withdrawal amount to commitment
-        (outSum[0], outSum[1]) = Secp256k1.mulWithHToPoint(_withdrawalAmount.Wei2Gwei());
+        //withdrawal amount + fee to commitment
+        (outSum[0], outSum[1]) = Secp256k1.mulWithHToPoint(_withdrawalAmount.Wei2Gwei().add(FEE));
 
         (outSum[0], outSum[1]) = Secp256k1.add(outSum[0], outSum[1], _outputs[0], _outputs[1]);
 
@@ -343,6 +330,9 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
 
         //transfer
         _recipient.transfer(_withdrawalAmount);
+
+        //transfer fee
+        transferFee(FEE);
 
         uint256[3] memory X;
         uint8[3] memory yBit;
@@ -366,21 +356,12 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
             utxos.length - 1);
     }
 
-    function addNewUTXO() internal {
-
+    function transferFee(uint256 fee) internal {
+        issuer().transfer(fee.Gwei2Wei());
     }
 
-    function storeTxData(byte[] memory proof, bool parseOutput) private {
-        uint8 rs = uint8(proof[0]);
-        uint8 numInput = uint8(proof[1]);
-        uint64 cursor = 2 + rs * numInput * 8;
-        bytes memory ki = new bytes(33);
-        for(i = 0; i < numInput; i++) {
-            for(uint8 j = 0; j < 33; i++) {
-                ki[j] = proof[cursor + i*33 + j];
-            }
-            //keyImages[uint256(keccak256(ki))] = true;
-        }
+    function addNewUTXO() internal {
+
     }
 
     function getUTXO(uint256 index) public view returns (uint256[3] memory,

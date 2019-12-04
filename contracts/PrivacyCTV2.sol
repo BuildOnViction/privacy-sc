@@ -65,6 +65,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
     event HashSign(bytes32 _hash);
     event RingParams(uint256 _numRing, uint256 _ringSize, uint256 _inputLength, uint256 _actualRingProofSize);
     event Message(bytes _raw, uint256 _length);
+    event TransactionFee(address _issuer, uint256 _amount);
 
     /**the first step for every one to use private transactions is deposit to the contract
     *@param {_pubkeyX} One time generated public key of the recipient for the deposit
@@ -364,6 +365,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
 
     function transferFee(uint256 fee) internal {
         issuer().transfer(fee.Gwei2Wei());
+        emit TransactionFee(issuer(), fee.Gwei2Wei());
     }
 
     function addNewUTXO() internal {

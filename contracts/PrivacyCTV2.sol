@@ -4,6 +4,7 @@ import {Secp256k1} from "./Secp256k1.sol";
 import {UnitUtils} from "./UnitUtils.sol";
 import "./SafeMath.sol";
 import "./RingCTVerifier.sol";
+import "./BulletProofVerifier.sol";
 import "./CopyUtils.sol";
 import "./TRC21.sol";
 import "./Bytes.sol";
@@ -13,7 +14,7 @@ interface IRegistryInterface {
     function getPrivacyAddress(address _normal) external view returns (bytes memory);
     function getNormalAddress(bytes calldata _privacy) external view returns (address);
 }
-contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
+contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
     using SafeMath for uint256;
     using UnitUtils for uint256;
 
@@ -111,7 +112,8 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
     function privateSend(uint256[] memory _inputIDs,
         uint256[] memory _outputs, //1/3 for commitments, 1/3 for stealths,, 1/3 for txpubs
         uint256[] memory _amounts, //1/2 for encryptd amounts, 1/2 for masks
-        bytes memory _ringSignature) public {
+        bytes memory _ringSignature,
+        bytes memory _bp) public {
 
         require(_inputIDs.length < 100, "too many inputs");
         require(_inputIDs.length > 0, "no inputs");
@@ -165,6 +167,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
 
         //verify ringSignature
         require(VerifyRingCT(fullRingCT), "signature failed");
+        require(VerifyRangeProof(_bp), "bulletproof verification failed");
         transferFee(FEE);
 
         //create output UTXOs
@@ -266,7 +269,8 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
         uint256 _withdrawalAmount,
         uint256[2] memory _amounts, // _amounts[0]: encrypted amount, _amounts[1]: encrypted mask
         address payable _recipient,
-        bytes memory _ringSignature) public {
+        bytes memory _ringSignature,
+        bytes memory _bp) public {
 
         require(_recipient != address(0x0), "recipient address invalid");
         require(_inputIDs.length < 100, "too many inputs");
@@ -323,6 +327,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier {
 
         //verify ringSignature
         require(VerifyRingCT(fullRingCT), "signature failed");
+        require(VerifyRangeProof(_bp), "bulletproof verification failed");
 
         //transfer
         _recipient.transfer(_withdrawalAmount);

@@ -167,7 +167,6 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
 
         //verify ringSignature
         require(VerifyRingCT(fullRingCT), "signature failed");
-        require(VerifyRangeProof(_bp), "bulletproof verification failed");
         transferFee(FEE);
 
         //create output UTXOs
@@ -176,6 +175,8 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
             uint256[3] memory X;
             uint8[3] memory yBit;
             (yBit[0], X[0]) = Secp256k1.compressXY(_outputs[i*2], _outputs[i*2 + 1]);
+            //overwrite commitment in range proof
+            Bytes.copyTo(yBit[0] + 2, X[0], _bp, 4 + i*33);
 
             (yBit[1], X[1]) = Secp256k1.compressXY(_outputs[outputLength*2 + i*2], _outputs[outputLength*2 + i*2 + 1]);
 
@@ -194,6 +195,8 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
                 [utxos[utxos.length - 1].amount, utxos[utxos.length - 1].mask],
                 utxos.length - 1);
         }
+        //verify bulletproof
+        //require(VerifyRangeProof(_bp), "bulletproof verification failed");
     }
 
     function copyRingKeys(bytes memory _dest, uint256 _inOffset, uint256[] memory _inputIDs, uint256 _numRing, uint256 _ringSize) internal returns (uint256) {
@@ -327,7 +330,6 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
 
         //verify ringSignature
         require(VerifyRingCT(fullRingCT), "signature failed");
-        require(VerifyRangeProof(_bp), "bulletproof verification failed");
 
         //transfer
         _recipient.transfer(_withdrawalAmount);
@@ -338,6 +340,10 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         uint256[3] memory X;
         uint8[3] memory yBit;
         (yBit[0], X[0]) = Secp256k1.compressXY(_outputs[0], _outputs[1]);
+        //overwrite bulletproof range proof with commitment
+        Bytes.copyTo(yBit[0] + 2, X[0], _bp, 4);
+        //verify bulletproof
+        //require(VerifyRangeProof(_bp), "bulletproof verification failed");
 
         (yBit[1], X[1]) = Secp256k1.compressXY(_outputs[2], _outputs[3]);
 

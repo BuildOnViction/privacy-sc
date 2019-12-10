@@ -402,16 +402,21 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         return keyImagesMapping[kiHash];
     }
 
-    function areSpent(bytes[] memory keyImages) public view returns (bool[] memory) {
-        bool[] memory result = new bool[](keyImages.length);
+        function areSpent(bytes memory keyImages) public view returns (bool[] memory) {
+            require(keyImages.length < 50 * 33);
 
-        for(uint8 i = 0; i < keyImages.length; i++) {
-            uint256 kiHash = CopyUtils.BytesToUint(keccak256(abi.encodePacked(keyImages[i])));
-            result[i] = keyImagesMapping[kiHash];
+            uint256 numberKeyImage = keyImages.length / 33;
+            bool[] memory result = new bool[](numberKeyImage);
+
+            for(uint256 i = 0; i < numberKeyImage; i++) {
+                (bool success, byte[33] memory ki) = CopyUtils.Copy33Bytes(keyImages, i*33);
+                require(success);
+                uint256 kiHash = CopyUtils.BytesToUint(keccak256(abi.encodePacked(ki)));
+                result[i] = keyImagesMapping[kiHash];
+            }
+
+            return result;
         }
-
-        return result;
-    }
 
     //dont receive any money via default callback
     function () external payable {

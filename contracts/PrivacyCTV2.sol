@@ -34,15 +34,15 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
     }
 
     struct UTXO {
-        CompressPubKey commitment;
-        CompressPubKey pubkey;
+        CompressPubKey[3] keys;
         uint256 amount; //encoded amount
-        CompressPubKey txPub;
         uint256 mask;   //encoded mask
+        uint256 txID;
     }
 
     struct Transaction {
-        uint[] utxos;   //indexes of utxos created by the transaction
+        uint[] utxoIndexes;   //indexes of utxos created by the transaction
+        byte[137] data;
     }
 
     UTXO[] public utxos;
@@ -73,32 +73,36 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         uint _txPubKeyY,
         uint256 _mask,
         uint256 _amount,
-        uint256 _encodedMask) external payable {
+        uint256 _encodedMask,
+        bytes memory _metadata) public payable {
         require(msg.value.Wei2Gwei() > DEPOSIT_FEE, "deposit amount must be strictly greater than deposit fee");
-
-        uint[2] memory stealth;
-        stealth[0] = _pubkeyX;
-        stealth[1] = _pubkeyY;
         require(Secp256k1.onCurveXY(_pubkeyX, _pubkeyY));
-        uint[2] memory txPub;
-        txPub[0] = _txPubKeyX;
-        txPub[1] = _txPubKeyY;
-        require(Secp256k1.onCurve(txPub));
+        require(Secp256k1.onCurveXY(_txPubKeyX, _txPubKeyY));
+
         (uint8 _ybitComitment, uint xCommitment) = Secp256k1.pedersenCommitment(_mask, msg.value.Wei2Gwei().sub(DEPOSIT_FEE));
-        (uint8 pybit, uint px) = Secp256k1.compress(stealth);
-        (uint8 txybit, uint txx) = Secp256k1.compress(txPub);
+        (uint8 pybit, uint px) = Secp256k1.compressXY(_pubkeyX, _pubkeyY);
+        (uint8 txybit, uint txx) = Secp256k1.compress(_txPubKeyX, _txPubKeyY);
+
         utxos.push(UTXO ({
-            commitment: CompressPubKey(_ybitComitment + 2, xCommitment),
-            pubkey: CompressPubKey(pybit + 2, px),
+            keys: [CompressPubKey(_ybitComitment + 2, xCommitment), CompressPubKey(pybit + 2, px), CompressPubKey(txybit + 2, txx)],
             amount: _amount,
-            txPub: CompressPubKey(txybit + 2, txx),
-            mask: _encodedMask})
+            mask: _encodedMask,
+            txID: txs.length
+            })
         );
         UTXO storage lastUTXO = utxos[utxos.length.sub(1)];
         emit NewUTXO([lastUTXO.commitment.x, lastUTXO.pubkey.x, lastUTXO.txPub.x],
-            [lastUTXO.commitment.yBit, lastUTXO.pubkey.yBit, lastUTXO.txPub.yBit],
-            [lastUTXO.amount, lastUTXO.mask],
-            utxos.length.sub(1));
+                    [lastUTXO.commitment.yBit, lastUTXO.pubkey.yBit, lastUTXO.txPub.yBit],
+                    [lastUTXO.amount, lastUTXO.mask],
+                    utxos.length.sub(1),
+                    txs.length);
+
+        //emit new transaction
+
+        txs.push(Transaction(
+                utxoIndexes: [utxos.length - 1],
+                data: _metadata;
+            ));
 
         transferFee(DEPOSIT_FEE);
     }

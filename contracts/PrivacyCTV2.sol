@@ -196,7 +196,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
                 utxos.length - 1);
         }
         //verify bulletproof
-        //require(VerifyRangeProof(_bp), "bulletproof verification failed");
+        require(VerifyRangeProof(_bp), "bulletproof verification failed");
     }
 
     function copyRingKeys(bytes memory _dest, uint256 _inOffset, uint256[] memory _inputIDs, uint256 _numRing, uint256 _ringSize) internal returns (uint256) {
@@ -343,7 +343,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         //overwrite bulletproof range proof with commitment
         Bytes.copyTo(yBit[0] + 2, X[0], _bp, 4);
         //verify bulletproof
-        //require(VerifyRangeProof(_bp), "bulletproof verification failed");
+        require(VerifyRangeProof(_bp), "bulletproof verification failed");
 
         (yBit[1], X[1]) = Secp256k1.compressXY(_outputs[2], _outputs[3]);
 

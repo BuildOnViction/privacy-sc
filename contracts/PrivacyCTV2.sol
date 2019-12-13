@@ -33,8 +33,16 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         uint256[2] encodeds;
     }
 
+    struct NewUTXOEventStruct {
+        uint256[3] Xs;   //commitmentX, pubkeyX, txPubX
+        uint8[3] YBits;        //commitmentYBit, pubkeyYBit, _txPubYBit
+        uint256[2] amount;
+        uint256 index;
+        uint256 txIndex;
+    }
+
     struct UTXO {
-        CompressPubKey[3] keys;
+        CompressPubKey[3] keys; //commitmentX, pubkeyX, txPubX
         uint256 amount; //encoded amount
         uint256 mask;   //encoded mask
         uint256 txID;
@@ -55,8 +63,10 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
     event NewUTXO(uint256[3] _Xs,   //commitmentX, pubkeyX, txPubX
         uint8[3] _YBits,        //commitmentYBit, pubkeyYBit, _txPubYBit
         uint256[2] _amount,
-        uint256 _index);
+        uint256 _index,
+        uint256 _txIndex);
     event TransactionFee(address _issuer, uint256 _amount);
+    event NewTransaction(uint256 _txIndex, NewUTXOEventStruct[] _utxos, byte[137] _data);
 
     /**the first step for every one to use private transactions is deposit to the contract
     *@param {_pubkeyX} One time generated public key of the recipient for the deposit
@@ -74,35 +84,31 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         uint256 _mask,
         uint256 _amount,
         uint256 _encodedMask,
-        bytes memory _metadata) public payable {
+        byte[137] memory _data) public payable {
         require(msg.value.Wei2Gwei() > DEPOSIT_FEE, "deposit amount must be strictly greater than deposit fee");
         require(Secp256k1.onCurveXY(_pubkeyX, _pubkeyY));
         require(Secp256k1.onCurveXY(_txPubKeyX, _txPubKeyY));
 
         (uint8 _ybitComitment, uint xCommitment) = Secp256k1.pedersenCommitment(_mask, msg.value.Wei2Gwei().sub(DEPOSIT_FEE));
         (uint8 pybit, uint px) = Secp256k1.compressXY(_pubkeyX, _pubkeyY);
-        (uint8 txybit, uint txx) = Secp256k1.compress(_txPubKeyX, _txPubKeyY);
+        (uint8 txybit, uint txx) = Secp256k1.compressXY(_txPubKeyX, _txPubKeyY);
 
-        utxos.push(UTXO ({
-            keys: [CompressPubKey(_ybitComitment + 2, xCommitment), CompressPubKey(pybit + 2, px), CompressPubKey(txybit + 2, txx)],
-            amount: _amount,
-            mask: _encodedMask,
-            txID: txs.length
-            })
-        );
+        utxos.length = utxos.length + 1;
+        utxos[utxos.length - 1].keys[0] = CompressPubKey(_ybitComitment + 2, xCommitment);
+        utxos[utxos.length - 1].keys[1] = CompressPubKey(pybit + 2, px);
+        utxos[utxos.length - 1].keys[2] = CompressPubKey(txybit + 2, txx);
+        utxos[utxos.length - 1].amount = _amount;
+        utxos[utxos.length - 1].mask = _encodedMask;
+        utxos[utxos.length - 1].txID = txs.length;
+
         UTXO storage lastUTXO = utxos[utxos.length.sub(1)];
-        emit NewUTXO([lastUTXO.commitment.x, lastUTXO.pubkey.x, lastUTXO.txPub.x],
-                    [lastUTXO.commitment.yBit, lastUTXO.pubkey.yBit, lastUTXO.txPub.yBit],
+        emit NewUTXO([lastUTXO.keys[0].x, lastUTXO.keys[1].x, lastUTXO.keys[2].x],
+                    [lastUTXO.keys[0].yBit, lastUTXO.keys[1].yBit, lastUTXO.keys[2].yBit],
                     [lastUTXO.amount, lastUTXO.mask],
                     utxos.length.sub(1),
                     txs.length);
 
-        //emit new transaction
-
-        txs.push(Transaction(
-                utxoIndexes: [utxos.length - 1],
-                data: _metadata;
-            ));
+        addNewTransaction(_data, 1);
 
         transferFee(DEPOSIT_FEE);
     }
@@ -117,7 +123,8 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         uint256[] memory _outputs, //1/3 for commitments, 1/3 for stealths,, 1/3 for txpubs
         uint256[] memory _amounts, //1/2 for encryptd amounts, 1/2 for masks
         bytes memory _ringSignature,
-        bytes memory _bp) public {
+        bytes memory _bp,
+        byte[137] memory _data) public {
 
         require(_inputIDs.length < 100, "too many inputs");
         require(_inputIDs.length > 0, "no inputs");
@@ -186,21 +193,24 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
 
             (yBit[2], X[2]) = Secp256k1.compressXY(_outputs[outputLength*4 + i*2], _outputs[outputLength*4 + i*2 + 1]);
 
-            utxos.push(UTXO ({
-                commitment: CompressPubKey(yBit[0] + 2, X[0]),
-                pubkey: CompressPubKey(yBit[1] + 2, X[1]),
-                amount: _amounts[i],
-                txPub: CompressPubKey(yBit[2] + 2, X[2]),
-                mask: _amounts[outputLength + i]
-                })
-            );
-            emit NewUTXO([utxos[utxos.length - 1].commitment.x, utxos[utxos.length - 1].pubkey.x, utxos[utxos.length - 1].txPub.x],
-                [utxos[utxos.length - 1].commitment.yBit, utxos[utxos.length - 1].pubkey.yBit, utxos[utxos.length - 1].txPub.yBit],
+            utxos.length = utxos.length + 1;
+            utxos[utxos.length - 1].keys[0] = CompressPubKey(yBit[0] + 2, X[0]);
+            utxos[utxos.length - 1].keys[1] = CompressPubKey(yBit[1] + 2, X[1]);
+            utxos[utxos.length - 1].keys[2] = CompressPubKey(yBit[2] + 2, X[2]);
+            utxos[utxos.length - 1].amount = _amounts[i];
+            utxos[utxos.length - 1].mask = _amounts[outputLength + i];
+            utxos[utxos.length - 1].txID = txs.length;
+
+            emit NewUTXO([utxos[utxos.length - 1].keys[0].x, utxos[utxos.length - 1].keys[1].x, utxos[utxos.length - 1].keys[2].x],
+                [utxos[utxos.length - 1].keys[0].yBit, utxos[utxos.length - 1].keys[1].yBit, utxos[utxos.length - 1].keys[2].yBit],
                 [utxos[utxos.length - 1].amount, utxos[utxos.length - 1].mask],
-                utxos.length - 1);
+                utxos.length - 1,
+                txs.length);
         }
         //verify bulletproof
         require(VerifyRangeProof(_bp), "bulletproof verification failed");
+
+        addNewTransaction(_data, outputLength);
     }
 
     function copyRingKeys(bytes memory _dest, uint256 _inOffset, uint256[] memory _inputIDs, uint256 _numRing, uint256 _ringSize) internal returns (uint256) {
@@ -209,8 +219,8 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
             for(uint256 loopVars1 = 0; loopVars1 < _ringSize; loopVars1++) {
                 //copy x and ybit serialized to fullRingCT
                 Bytes.copyTo(
-                        utxos[_inputIDs[loopVars0*(_ringSize) + loopVars1]].pubkey.yBit,
-                        utxos[_inputIDs[loopVars0*(_ringSize) + loopVars1]].pubkey.x,
+                        utxos[_inputIDs[loopVars0*(_ringSize) + loopVars1]].keys[1].yBit,
+                        utxos[_inputIDs[loopVars0*(_ringSize) + loopVars1]].keys[1].x,
                         _dest, offset
                     );
                 offset += 33;
@@ -236,19 +246,19 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
             //compute sum of: all input pubkeys + all input commitments
             for(loopVars[0] = 0; loopVars[0] < ringParams[0] - 1; loopVars[0]++) {
                 if (point[0] == uint256(0)) {
-                    (point[0], point[1]) = Secp256k1.decompressXY(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].pubkey.yBit%2,
-                        utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].pubkey.x);
+                    (point[0], point[1]) = Secp256k1.decompressXY(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].keys[1].yBit%2,
+                        utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].keys[1].x);
 
-                    uint256[2] memory commitment = Secp256k1.decompress(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].commitment.yBit%2,
-                        utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].commitment.x);
+                    uint256[2] memory commitment = Secp256k1.decompress(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].keys[0].yBit%2,
+                        utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].keys[0].x);
 
                     (point[0], point[1]) = Secp256k1.add(point[0], point[1], commitment[0], commitment[1]);
                 } else {
-                    uint256[2] memory temp = Secp256k1.decompress(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].pubkey.yBit%2,
-                        utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].pubkey.x);
+                    uint256[2] memory temp = Secp256k1.decompress(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].keys[1].yBit%2,
+                        utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].keys[1].x);
                     (point[0], point[1]) = Secp256k1.add(point[0], point[1], temp[0], temp[1]);
-                    temp = Secp256k1.decompress(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].commitment.yBit%2,
-                        utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].commitment.x);
+                    temp = Secp256k1.decompress(utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].keys[0].yBit%2,
+                        utxos[_inputIDs[loopVars[0]*ringParams[1] + loopVars[1]]].keys[0].x);
                     (point[0], point[1]) = Secp256k1.add(point[0], point[1], temp[0], temp[1]);
                 }
             }
@@ -277,7 +287,8 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         uint256[2] memory _amounts, // _amounts[0]: encrypted amount, _amounts[1]: encrypted mask
         address payable _recipient,
         bytes memory _ringSignature,
-        bytes memory _bp) public {
+        bytes memory _bp,
+        byte[137] memory _data) public {
 
         require(_recipient != address(0x0), "recipient address invalid");
         require(_inputIDs.length < 100, "too many inputs");
@@ -353,18 +364,20 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
 
         (yBit[2], X[2]) = Secp256k1.compressXY(_outputs[4], _outputs[5]);
 
-        utxos.push(UTXO ({
-            commitment: CompressPubKey(yBit[0] + 2, X[0]),
-            pubkey: CompressPubKey(yBit[1] + 2, X[1]),
-            amount: _amounts[0],
-            txPub: CompressPubKey(yBit[2] + 2, X[2]),
-            mask: _amounts[1]
-            })
-        );
-        emit NewUTXO([utxos[utxos.length - 1].commitment.x, utxos[utxos.length - 1].pubkey.x, utxos[utxos.length - 1].txPub.x],
-            [utxos[utxos.length - 1].commitment.yBit, utxos[utxos.length - 1].pubkey.yBit, utxos[utxos.length - 1].txPub.yBit],
+        utxos.length = utxos.length + 1;
+        utxos[utxos.length - 1].keys[0] = CompressPubKey(yBit[0] + 2, X[0]);
+        utxos[utxos.length - 1].keys[1] = CompressPubKey(yBit[1] + 2, X[1]);
+        utxos[utxos.length - 1].keys[2] = CompressPubKey(yBit[2] + 2, X[2]);
+        utxos[utxos.length - 1].amount = _amounts[0];
+        utxos[utxos.length - 1].mask = _amounts[1];
+        utxos[utxos.length - 1].txID = txs.length;
+
+        emit NewUTXO([utxos[utxos.length - 1].keys[0].x, utxos[utxos.length - 1].keys[1].x, utxos[utxos.length - 1].keys[2].x],
+            [utxos[utxos.length - 1].keys[0].yBit, utxos[utxos.length - 1].keys[1].yBit, utxos[utxos.length - 1].keys[2].yBit],
             [utxos[utxos.length - 1].amount, utxos[utxos.length - 1].mask],
-            utxos.length - 1);
+            utxos.length - 1,
+            txs.length);
+        addNewTransaction(_data, 1);
     }
 
     function transferFee(uint256 fee) internal {
@@ -372,8 +385,73 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         emit TransactionFee(issuer(), fee.Gwei2Wei());
     }
 
-    function addNewUTXO() internal {
+    function addNewTransaction(byte[137] memory _data, uint256 _numUTXO) internal {
+        //emit new transaction
+        txs.length = txs.length + 1;
+        NewUTXOEventStruct[] memory newUTXOs = new NewUTXOEventStruct[](_numUTXO);
+        for(uint i = utxos.length - _numUTXO; i < utxos.length; i++) {
+            txs[txs.length - 1].utxoIndexes.push(i);
+            txs[txs.length - 1].data = _data;
 
+            newUTXOs[i + _numUTXO - utxos.length].Xs = [utxos[i].keys[0].x, utxos[i].keys[1].x, utxos[i].keys[2].x];
+            newUTXOs[i + _numUTXO - utxos.length].YBits = [utxos[i].keys[0].yBit, utxos[i].keys[1].yBit, utxos[i].keys[2].yBit];
+            newUTXOs[i + _numUTXO - utxos.length].amount = [utxos[i].amount, utxos[i].mask];
+            newUTXOs[i + _numUTXO - utxos.length].index = i;
+            newUTXOs[i + _numUTXO - utxos.length].txIndex = txs.length - 1;
+        }
+
+        emit NewTransaction(
+            txs.length - 1, newUTXOs, _data
+        );
+    }
+
+    function getTransaction(uint256 _index) public view returns (uint256, NewUTXOEventStruct[] memory, byte[137] memory) {
+        uint256 numUTXO = txs[_index].utxoIndexes.length;
+        NewUTXOEventStruct[] memory retUTXOs = new NewUTXOEventStruct[](numUTXO);
+        uint256[] storage utxoIndexes = txs[_index].utxoIndexes;
+        for(uint i = 0; i < numUTXO; i++) {
+            UTXO storage utxo = utxos[utxoIndexes[i]];
+            retUTXOs[i].Xs = [utxo.keys[0].x, utxo.keys[1].x, utxo.keys[2].x];
+            retUTXOs[i].YBits = [utxo.keys[0].yBit, utxo.keys[1].yBit, utxo.keys[2].yBit];
+            retUTXOs[i].amount = [utxo.amount, utxo.mask];
+            retUTXOs[i].index = utxoIndexes[i];
+            retUTXOs[i].txIndex = _index;
+        }
+
+        return (_index, retUTXOs, txs[_index].data);
+    }
+
+    function getTransactions(uint256[] memory _indexes) public view returns (uint256[] memory, NewUTXOEventStruct[] memory, byte[] memory) {
+        uint256 numUTXO = 0;
+        uint256 numValidTx = 0;
+        uint256 utxoIterator = 0;
+        for(uint i = 0; i < _indexes.length; i++) {
+            if (_indexes[i] >= txs.length) break;
+            numUTXO += txs[_indexes[i]].utxoIndexes.length;
+            numValidTx++;
+        }
+        NewUTXOEventStruct[] memory retUTXOs = new NewUTXOEventStruct[](numUTXO);
+        byte[] memory data = new byte[](numValidTx*137);
+        for(uint i = 0; i < _indexes.length; i++) {
+            if (_indexes[i] >= txs.length) break;
+            uint256 txNumUTXO = txs[i].utxoIndexes.length;
+            uint256[] storage utxoIndexes = txs[i].utxoIndexes;
+            for(uint j = 0; j < txNumUTXO; j++) {
+                UTXO storage utxo = utxos[utxoIndexes[j]];
+                retUTXOs[utxoIterator].Xs = [utxo.keys[0].x, utxo.keys[1].x, utxo.keys[2].x];
+                retUTXOs[utxoIterator].YBits = [utxo.keys[0].yBit, utxo.keys[1].yBit, utxo.keys[2].yBit];
+                retUTXOs[utxoIterator].amount = [utxo.amount, utxo.mask];
+                retUTXOs[utxoIterator].index = utxoIndexes[j];
+                retUTXOs[utxoIterator].txIndex = utxo.txID;
+                utxoIterator++;
+            }
+
+            for(uint k = 0; k < 137; k++) {
+                data[i*137 + k] = txs[i].data[k];
+            }
+        }
+
+        return (_indexes, retUTXOs, data);
     }
 
     function getUTXO(uint256 index) public view returns (uint256[3] memory,
@@ -381,8 +459,8 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         uint256[2] memory //0. encrypted amount, 1. encrypted mask
     ) {
         return (
-        [utxos[index].commitment.x, utxos[index].pubkey.x, utxos[index].txPub.x],
-        [utxos[index].commitment.yBit, utxos[index].pubkey.yBit, utxos[index].txPub.yBit],
+        [utxos[index].keys[0].x, utxos[index].keys[1].x, utxos[index].keys[2].x],
+        [utxos[index].keys[0].yBit, utxos[index].keys[1].yBit, utxos[index].keys[2].yBit],
         [utxos[index].amount,utxos[index].mask]
         );
     }
@@ -399,9 +477,9 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
             if (utxos.length <= index) {
                 return utxs;
             }
-            utxo.XBits = [utxos[index].commitment.x, utxos[index].pubkey.x, utxos[index].txPub.x];
-            utxo.YBits = [utxos[index].commitment.yBit, utxos[index].pubkey.yBit, utxos[index].txPub.yBit];
-            utxo.encodeds = [utxos[index].amount,utxos[index].mask];
+            utxo.XBits = [utxos[index].keys[0].x, utxos[index].keys[1].x, utxos[index].keys[2].x];
+            utxo.YBits = [utxos[index].keys[0].yBit, utxos[index].keys[1].yBit, utxos[index].keys[2].yBit];
+            utxo.encodeds = [utxos[index].amount, utxos[index].mask];
         }
 
         return utxs;

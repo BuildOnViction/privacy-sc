@@ -485,6 +485,29 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         return utxs;
     }
 
+    function getTxs(uint256[] memory indexs) public view returns (Transaction[] memory) {
+        Transaction[] memory result_txs = new Transaction[](indexs.length);
+        // just a limit each request
+        require(indexs.length < 50);
+
+        for(uint8 i = 0; i < indexs.length; i++) {
+            uint256 index = indexs[i];
+
+            Transaction memory tx = result_txs[i];
+            if (txs.length <= index) {
+                return result_txs;
+            }
+            tx.utxoIndexes = txs[index].utxoIndexes;
+            tx.data = txs[index].data;
+        }
+
+        return result_txs;
+    }
+
+    function getLatestTx() public view returns (uint) {
+        return txs.length;
+    }
+
     function isSpent(byte[] memory keyImage) public view returns (bool) {
         uint256 kiHash = CopyUtils.BytesToUint(keccak256(abi.encodePacked(keyImage)));
         return keyImagesMapping[kiHash];

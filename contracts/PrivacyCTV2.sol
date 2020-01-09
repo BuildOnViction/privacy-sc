@@ -31,6 +31,8 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         uint256[3] XBits;
         uint8[3] YBits;
         uint256[2] encodeds;
+        uint256 index;
+        uint256 txID;
     }
 
     struct NewUTXOEventStruct {
@@ -456,12 +458,16 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
 
     function getUTXO(uint256 index) public view returns (uint256[3] memory,
         uint8[3] memory,
-        uint256[2] memory //0. encrypted amount, 1. encrypted mask
+        uint256[2] memory, //0. encrypted amount, 1. encrypted mask
+        uint256,
+        uint256
     ) {
         return (
-        [utxos[index].keys[0].x, utxos[index].keys[1].x, utxos[index].keys[2].x],
-        [utxos[index].keys[0].yBit, utxos[index].keys[1].yBit, utxos[index].keys[2].yBit],
-        [utxos[index].amount,utxos[index].mask]
+            [utxos[index].keys[0].x, utxos[index].keys[1].x, utxos[index].keys[2].x],
+            [utxos[index].keys[0].yBit, utxos[index].keys[1].yBit, utxos[index].keys[2].yBit],
+            [utxos[index].amount,utxos[index].mask],
+            index,
+            utxos[index].txID
         );
     }
 
@@ -480,6 +486,8 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
             utxo.XBits = [utxos[index].keys[0].x, utxos[index].keys[1].x, utxos[index].keys[2].x];
             utxo.YBits = [utxos[index].keys[0].yBit, utxos[index].keys[1].yBit, utxos[index].keys[2].yBit];
             utxo.encodeds = [utxos[index].amount, utxos[index].mask];
+            utxo.index = index;
+            utxo.txID = utxos[index].txID;
         }
 
         return utxs;

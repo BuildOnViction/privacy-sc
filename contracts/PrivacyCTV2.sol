@@ -474,7 +474,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
     function getUTXOs(uint256[] memory indexs) public view returns (RawUTXO[] memory) {
         RawUTXO[] memory utxs = new RawUTXO[](indexs.length);
         // just a limit each request
-        require(indexs.length < 50);
+        require(indexs.length < 200);
 
         for(uint8 i = 0; i < indexs.length; i++) {
             uint256 index = indexs[i];
@@ -496,7 +496,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
     function getTxs(uint256[] memory indexs) public view returns (Transaction[] memory) {
         Transaction[] memory result_txs = new Transaction[](indexs.length);
         // just a limit each request
-        require(indexs.length < 50);
+        require(indexs.length < 200);
 
         for(uint8 i = 0; i < indexs.length; i++) {
             uint256 index = indexs[i];
@@ -522,7 +522,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
     }
 
         function areSpent(bytes memory keyImages) public view returns (bool[] memory) {
-            require(keyImages.length < 50 * 33);
+            require(keyImages.length < 200 * 33);
 
             uint256 numberKeyImage = keyImages.length / 33;
             bool[] memory result = new bool[](numberKeyImage);

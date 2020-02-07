@@ -493,6 +493,10 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         return utxs;
     }
 
+    function totalUTXO() public view returns (uint256),
+        return utxos.length;
+    }
+
     function getTxs(uint256[] memory indexs) public view returns (Transaction[] memory) {
         Transaction[] memory result_txs = new Transaction[](indexs.length);
         // just a limit each request

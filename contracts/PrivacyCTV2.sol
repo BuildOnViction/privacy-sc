@@ -1,3 +1,4 @@
+
 pragma solidity 0.5.0;
 pragma experimental ABIEncoderV2;
 import {Secp256k1} from "./Secp256k1.sol";
@@ -31,6 +32,8 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         uint256[3] XBits;
         uint8[3] YBits;
         uint256[2] encodeds;
+        uint256 index;
+        uint256 txID;
     }
 
     struct NewUTXOEventStruct {
@@ -138,7 +141,6 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         //[2]: key images offset
         //[3]: key images offset
         uint256[4] memory ringParams;
-        uint256[3] memory loopVars;
         ringParams[0] = CopyUtils.ConvertBytesToUint(_ringSignature, 0, 8);    //numRing
         ringParams[1] = CopyUtils.ConvertBytesToUint(_ringSignature, 8, 8);    //ringSize
         require(_inputIDs.length % (ringParams[1]) == 0);
@@ -213,7 +215,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         addNewTransaction(_data, outputLength);
     }
 
-    function copyRingKeys(bytes memory _dest, uint256 _inOffset, uint256[] memory _inputIDs, uint256 _numRing, uint256 _ringSize) internal returns (uint256) {
+    function copyRingKeys(bytes memory _dest, uint256 _inOffset, uint256[] memory _inputIDs, uint256 _numRing, uint256 _ringSize) internal view returns (uint256) {
         uint256 offset = _inOffset;
         for(uint256 loopVars0 = 0; loopVars0 < _numRing - 1; loopVars0++) {
             for(uint256 loopVars1 = 0; loopVars1 < _ringSize; loopVars1++) {
@@ -238,7 +240,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         }
     }
 
-    function computeAdditionalRingKeys(uint256[] memory _inputIDs, bytes memory fullRingCT, uint256[4] memory ringParams, uint256 _inOffset, uint256[2] memory outSum) internal returns (uint256){
+    function computeAdditionalRingKeys(uint256[] memory _inputIDs, bytes memory fullRingCT, uint256[4] memory ringParams, uint256 _inOffset, uint256[2] memory outSum) internal view returns (uint256){
         uint256 fullRingCTOffSet = _inOffset;
         uint256[2] memory loopVars;
         for(loopVars[1] = 0; loopVars[1] < ringParams[1]; loopVars[1]++) {
@@ -303,7 +305,6 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         //[2]: public offset
         //[3]: key images offset
         uint256[4] memory ringParams;
-        uint256[3] memory loopVars;
         ringParams[0] = CopyUtils.ConvertBytesToUint(_ringSignature, 0, 8);    //numRing
         ringParams[1] = CopyUtils.ConvertBytesToUint(_ringSignature, 8, 8);    //ringSize
 
@@ -456,19 +457,23 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
 
     function getUTXO(uint256 index) public view returns (uint256[3] memory,
         uint8[3] memory,
-        uint256[2] memory //0. encrypted amount, 1. encrypted mask
+        uint256[2] memory, //0. encrypted amount, 1. encrypted mask
+        uint256,
+        uint256
     ) {
         return (
-        [utxos[index].keys[0].x, utxos[index].keys[1].x, utxos[index].keys[2].x],
-        [utxos[index].keys[0].yBit, utxos[index].keys[1].yBit, utxos[index].keys[2].yBit],
-        [utxos[index].amount,utxos[index].mask]
+            [utxos[index].keys[0].x, utxos[index].keys[1].x, utxos[index].keys[2].x],
+            [utxos[index].keys[0].yBit, utxos[index].keys[1].yBit, utxos[index].keys[2].yBit],
+            [utxos[index].amount,utxos[index].mask],
+            index,
+            utxos[index].txID
         );
     }
 
     function getUTXOs(uint256[] memory indexs) public view returns (RawUTXO[] memory) {
         RawUTXO[] memory utxs = new RawUTXO[](indexs.length);
         // just a limit each request
-        require(indexs.length < 50);
+        require(indexs.length < 200);
 
         for(uint8 i = 0; i < indexs.length; i++) {
             uint256 index = indexs[i];
@@ -480,25 +485,31 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
             utxo.XBits = [utxos[index].keys[0].x, utxos[index].keys[1].x, utxos[index].keys[2].x];
             utxo.YBits = [utxos[index].keys[0].yBit, utxos[index].keys[1].yBit, utxos[index].keys[2].yBit];
             utxo.encodeds = [utxos[index].amount, utxos[index].mask];
+            utxo.index = index;
+            utxo.txID = utxos[index].txID;
         }
 
         return utxs;
     }
 
+    function totalUTXO() public view returns (uint256) {
+        return utxos.length;
+    }
+
     function getTxs(uint256[] memory indexs) public view returns (Transaction[] memory) {
         Transaction[] memory result_txs = new Transaction[](indexs.length);
         // just a limit each request
-        require(indexs.length < 50);
+        require(indexs.length < 200);
 
         for(uint8 i = 0; i < indexs.length; i++) {
             uint256 index = indexs[i];
 
-            Transaction memory tx = result_txs[i];
+            Transaction memory txn = result_txs[i];
             if (txs.length <= index) {
                 return result_txs;
             }
-            tx.utxoIndexes = txs[index].utxoIndexes;
-            tx.data = txs[index].data;
+            txn.utxoIndexes = txs[index].utxoIndexes;
+            txn.data = txs[index].data;
         }
 
         return result_txs;
@@ -513,21 +524,21 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         return keyImagesMapping[kiHash];
     }
 
-        function areSpent(bytes memory keyImages) public view returns (bool[] memory) {
-            require(keyImages.length < 50 * 33);
+    function areSpent(bytes memory keyImages) public view returns (bool[] memory) {
+        require(keyImages.length < 200 * 33);
 
-            uint256 numberKeyImage = keyImages.length / 33;
-            bool[] memory result = new bool[](numberKeyImage);
+        uint256 numberKeyImage = keyImages.length / 33;
+        bool[] memory result = new bool[](numberKeyImage);
 
-            for(uint256 i = 0; i < numberKeyImage; i++) {
-                (bool success, byte[33] memory ki) = CopyUtils.Copy33Bytes(keyImages, i*33);
-                require(success);
-                uint256 kiHash = CopyUtils.BytesToUint(keccak256(abi.encodePacked(ki)));
-                result[i] = keyImagesMapping[kiHash];
-            }
-
-            return result;
+        for(uint256 i = 0; i < numberKeyImage; i++) {
+            (bool success, byte[33] memory ki) = CopyUtils.Copy33Bytes(keyImages, i*33);
+            require(success);
+            uint256 kiHash = CopyUtils.BytesToUint(keccak256(abi.encodePacked(ki)));
+            result[i] = keyImagesMapping[kiHash];
         }
+
+        return result;
+    }
 
     //dont receive any money via default callback
     function () external payable {

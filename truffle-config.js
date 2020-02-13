@@ -19,8 +19,9 @@
  */
 
 const HDWalletProvider = require('truffle-hdwallet-provider');
-const privateKey = "06E77C26DD44F807A67DCE660B8F8D39209100678DEEEFD032214B7BF0A99F02";
-const address =  "0x1901deed3e1AfA53109DbA327B45B6F8Fa1809E1";
+const config = require('./env.json');
+const privateKey = config.ACCOUNT.PRIVATEKEY;
+const address =  config.ACCOUNT.ADDRESS;
 //
 // const fs = require('fs');
 // const mnemonic = fs.readFileSync(".secret").toString().trim();
@@ -44,7 +45,7 @@ module.exports = {
     // options below to some value.
     //
     development: {
-      provider: () => new HDWalletProvider(privateKey, 'http://206.189.39.242:8545'),
+      provider: () => new HDWalletProvider(privateKey, config.RPC),
       network_id: 88,
       gasPrice: 10000000000000, // default gas price in wei, 20 gwei in this case,
       gas: '30000000',

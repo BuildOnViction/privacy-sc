@@ -1,147 +1,148 @@
 {
-    "ACCOUNT": {
-        "PRIVATEKEY": "06E77C26DD44F807A67DCE660B8F8D39209100678DEEEFD032214B7BF0A99F02",
-        "ADDRESS": "0x1901deed3e1AfA53109DbA327B45B6F8Fa1809E1"
-    },
-    "ISSUER_ADDRESS": "0x20FE90495eFbb9aA588ccA95E64E2D9Afb2D3f1b",
-    "ISSUER_ABI": [
-        {
-          "inputs": [
-            {
-              "name": "value",
-              "type": "uint256"
-            }
-          ],
-          "payable": false,
-          "stateMutability": "nonpayable",
-          "type": "constructor",
-          "signature": "constructor"
-        },
-        {
-          "anonymous": false,
-          "inputs": [
-            {
-              "indexed": true,
-              "name": "issuer",
-              "type": "address"
-            },
-            {
-              "indexed": true,
-              "name": "token",
-              "type": "address"
-            },
-            {
-              "indexed": false,
-              "name": "value",
-              "type": "uint256"
-            }
-          ],
-          "name": "Apply",
-          "type": "event",
-          "signature": "0x2d485624158277d5113a56388c3abf5c20e3511dd112123ba376d16b21e4d716"
-        },
-        {
-          "anonymous": false,
-          "inputs": [
-            {
-              "indexed": true,
-              "name": "supporter",
-              "type": "address"
-            },
-            {
-              "indexed": true,
-              "name": "token",
-              "type": "address"
-            },
-            {
-              "indexed": false,
-              "name": "value",
-              "type": "uint256"
-            }
-          ],
-          "name": "Charge",
-          "type": "event",
-          "signature": "0x5cffac866325fd9b2a8ea8df2f110a0058313b279402d15ae28dd324a2282e06"
-        },
-        {
-          "constant": true,
-          "inputs": [],
-          "name": "minCap",
-          "outputs": [
-            {
-              "name": "",
-              "type": "uint256"
-            }
-          ],
-          "payable": false,
-          "stateMutability": "view",
-          "type": "function",
-          "signature": "0x3fa615b0"
-        },
-        {
-          "constant": true,
-          "inputs": [],
-          "name": "tokens",
-          "outputs": [
-            {
-              "name": "",
-              "type": "address[]"
-            }
-          ],
-          "payable": false,
-          "stateMutability": "view",
-          "type": "function",
-          "signature": "0x9d63848a"
-        },
-        {
-          "constant": true,
-          "inputs": [
-            {
-              "name": "token",
-              "type": "address"
-            }
-          ],
-          "name": "getTokenCapacity",
-          "outputs": [
-            {
-              "name": "",
-              "type": "uint256"
-            }
-          ],
-          "payable": false,
-          "stateMutability": "view",
-          "type": "function",
-          "signature": "0x8f3a981c"
-        },
-        {
-          "constant": false,
-          "inputs": [
-            {
-              "name": "token",
-              "type": "address"
-            }
-          ],
-          "name": "apply",
-          "outputs": [],
-          "payable": true,
-          "stateMutability": "payable",
-          "type": "function",
-          "signature": "0xc6b32f34"
-        },
-        {
-          "constant": false,
-          "inputs": [
-            {
-              "name": "token",
-              "type": "address"
-            }
-          ],
-          "name": "charge",
-          "outputs": [],
-          "payable": true,
-          "stateMutability": "payable",
-          "type": "function",
-          "signature": "0xfc6bd76a"
-        }
-    ]
+  "ACCOUNT": {
+      "PRIVATEKEY": "06E77C26DD44F807A67DCE660B8F8D39209100678DEEEFD032214B7BF0A99F02",
+      "ADDRESS": "0x1901deed3e1AfA53109DbA327B45B6F8Fa1809E1"
+  },
+  "RPC": "http://206.189.39.242:8545",
+  "ISSUER_ADDRESS": "0x20FE90495eFbb9aA588ccA95E64E2D9Afb2D3f1b",
+  "ISSUER_ABI": [
+      {
+        "inputs": [
+          {
+            "name": "value",
+            "type": "uint256"
+          }
+        ],
+        "payable": false,
+        "stateMutability": "nonpayable",
+        "type": "constructor",
+        "signature": "constructor"
+      },
+      {
+        "anonymous": false,
+        "inputs": [
+          {
+            "indexed": true,
+            "name": "issuer",
+            "type": "address"
+          },
+          {
+            "indexed": true,
+            "name": "token",
+            "type": "address"
+          },
+          {
+            "indexed": false,
+            "name": "value",
+            "type": "uint256"
+          }
+        ],
+        "name": "Apply",
+        "type": "event",
+        "signature": "0x2d485624158277d5113a56388c3abf5c20e3511dd112123ba376d16b21e4d716"
+      },
+      {
+        "anonymous": false,
+        "inputs": [
+          {
+            "indexed": true,
+            "name": "supporter",
+            "type": "address"
+          },
+          {
+            "indexed": true,
+            "name": "token",
+            "type": "address"
+          },
+          {
+            "indexed": false,
+            "name": "value",
+            "type": "uint256"
+          }
+        ],
+        "name": "Charge",
+        "type": "event",
+        "signature": "0x5cffac866325fd9b2a8ea8df2f110a0058313b279402d15ae28dd324a2282e06"
+      },
+      {
+        "constant": true,
+        "inputs": [],
+        "name": "minCap",
+        "outputs": [
+          {
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "payable": false,
+        "stateMutability": "view",
+        "type": "function",
+        "signature": "0x3fa615b0"
+      },
+      {
+        "constant": true,
+        "inputs": [],
+        "name": "tokens",
+        "outputs": [
+          {
+            "name": "",
+            "type": "address[]"
+          }
+        ],
+        "payable": false,
+        "stateMutability": "view",
+        "type": "function",
+        "signature": "0x9d63848a"
+      },
+      {
+        "constant": true,
+        "inputs": [
+          {
+            "name": "token",
+            "type": "address"
+          }
+        ],
+        "name": "getTokenCapacity",
+        "outputs": [
+          {
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "payable": false,
+        "stateMutability": "view",
+        "type": "function",
+        "signature": "0x8f3a981c"
+      },
+      {
+        "constant": false,
+        "inputs": [
+          {
+            "name": "token",
+            "type": "address"
+          }
+        ],
+        "name": "apply",
+        "outputs": [],
+        "payable": true,
+        "stateMutability": "payable",
+        "type": "function",
+        "signature": "0xc6b32f34"
+      },
+      {
+        "constant": false,
+        "inputs": [
+          {
+            "name": "token",
+            "type": "address"
+          }
+        ],
+        "name": "charge",
+        "outputs": [],
+        "payable": true,
+        "stateMutability": "payable",
+        "type": "function",
+        "signature": "0xfc6bd76a"
+      }
+  ]
 }

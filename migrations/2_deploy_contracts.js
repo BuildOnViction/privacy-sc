@@ -16,7 +16,7 @@ const issuer_address = ENV.ISSUER_ADDRESS;
 const ISSUER_ABI = ENV.ISSUER_ABI;
 
 // TODO move to config
-const provider = new HDWalletProvider(privateKey, 'http://206.189.39.242:8545');
+const provider = new HDWalletProvider(privateKey, ENV.RPC);
 
 const web3 = new Web3(provider);
 

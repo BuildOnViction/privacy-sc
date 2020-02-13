@@ -25,7 +25,6 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         uint8 yBit;
         uint256 x;
     }
-    address RegistryContract = 0xbb32d285e4cF30d439F8106bbA926941730fbf1E;
 
     struct RawUTXO {
         uint256[3] XBits;

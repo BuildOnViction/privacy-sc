@@ -10,7 +10,7 @@ import "./TRCAnonymizerTomoZ.sol";
 import "./Bytes.sol";
 
 
-contract PrivacyCTV2 is TRCAnonymizerTomoZ, RingCTVerifier, BulletProofVerifier {
+contract TokenAnonymizer is TRCAnonymizerTomoZ, RingCTVerifier, BulletProofVerifier {
     using SafeMath for uint256;
     using UnitUtils for uint256;
 

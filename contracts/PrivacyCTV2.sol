@@ -43,11 +43,17 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         uint256 txIndex;
     }
 
+    /*For exchanges, users will use exchange privacy address to deposit to exchanges.
+    * exchange deposit address = privacy address + user ID 
+    * more info on the structure of exchange address could be found here
+    * https://docs.tomochain.com/developer-guide/integration/tomop-exchange-integration
+    */
     struct UTXO {
         CompressPubKey[3] keys; //commitmentX, pubkeyX, txPubX
         uint256 amount; //encoded amount
         uint256 mask;   //encoded mask
         uint256 txID;
+        uint256 depositID;  //deposit ID = ECDH - userID
     }
 
     struct Transaction {

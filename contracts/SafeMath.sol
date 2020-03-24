@@ -62,4 +62,8 @@ library SafeMath {
         require(b != 0);
         return a % b;
     }
+
+    function unsafeToUint64(uint256 _input) internal pure returns (uint64) {
+        return uint64(_input);
+    }
 }

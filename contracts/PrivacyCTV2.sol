@@ -37,19 +37,19 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         uint256[3] Xs;   //commitmentX, pubkeyX, txPubX
         uint8[3] YBits;        //commitmentYBit, pubkeyYBit, _txPubYBit
         uint256[2] amount;
-        uint256 index;
-        uint256 txIndex;
+        uint64 index;
+        uint64 txIndex;
     }
 
     struct UTXO {
         CompressPubKey[3] keys; //commitmentX, pubkeyX, txPubX
         uint256 amount; //encoded amount
         uint256 mask;   //encoded mask
-        uint256 txID;
+        uint64 txID;
     }
 
     struct Transaction {
-        uint[] utxoIndexes;   //indexes of utxos created by the transaction
+        uint64[] utxoIndexes;   //indexes of utxos created by the transaction
         byte[137] data;
     }
 
@@ -63,10 +63,10 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
     event NewUTXO(uint256[3] _Xs,   //commitmentX, pubkeyX, txPubX
         uint8[3] _YBits,        //commitmentYBit, pubkeyYBit, _txPubYBit
         uint256[2] _amount,
-        uint256 _index,
-        uint256 _txIndex);
+        uint64 _index,
+        uint64 _txIndex);
     event TransactionFee(address _issuer, uint256 _amount);
-    event NewTransaction(uint256 _txIndex, NewUTXOEventStruct[] _utxos, byte[137] _data);
+    event NewTransaction(uint64 _txIndex, NewUTXOEventStruct[] _utxos, byte[137] _data);
 
     /**the first step for every one to use private transactions is deposit to the contract
     *@param {_pubkeyX} One time generated public key of the recipient for the deposit
@@ -99,14 +99,14 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         utxos[utxos.length - 1].keys[2] = CompressPubKey(txybit + 2, txx);
         utxos[utxos.length - 1].amount = _amount;
         utxos[utxos.length - 1].mask = _encodedMask;
-        utxos[utxos.length - 1].txID = txs.length;
+        utxos[utxos.length - 1].txID = txs.length.unsafeToUint64();
 
         UTXO storage lastUTXO = utxos[utxos.length.sub(1)];
         emit NewUTXO([lastUTXO.keys[0].x, lastUTXO.keys[1].x, lastUTXO.keys[2].x],
                     [lastUTXO.keys[0].yBit, lastUTXO.keys[1].yBit, lastUTXO.keys[2].yBit],
                     [lastUTXO.amount, lastUTXO.mask],
-                    utxos.length.sub(1),
-                    txs.length);
+                    utxos.length.sub(1).unsafeToUint64(),
+                    txs.length.unsafeToUint64());
 
         addNewTransaction(_data, 1);
 
@@ -119,7 +119,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
     *@param {_amounts} enrypted/encoded format of transaction outputs amounts and masks/blinding factors
     *@param {_ringSignature} ring signature that will be verified by precompiled contract
     */
-    function privateSend(uint256[] memory _inputIDs,
+    function privateSend(uint64[] memory _inputIDs,
         uint256[] memory _outputs, //1/3 for commitments, 1/3 for stealths,, 1/3 for txpubs
         uint256[] memory _amounts, //1/2 for encryptd amounts, 1/2 for masks
         bytes memory _ringSignature,
@@ -199,13 +199,13 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
             utxos[utxos.length - 1].keys[2] = CompressPubKey(yBit[2] + 2, X[2]);
             utxos[utxos.length - 1].amount = _amounts[i];
             utxos[utxos.length - 1].mask = _amounts[outputLength + i];
-            utxos[utxos.length - 1].txID = txs.length;
+            utxos[utxos.length - 1].txID = txs.length.unsafeToUint64();
 
             emit NewUTXO([utxos[utxos.length - 1].keys[0].x, utxos[utxos.length - 1].keys[1].x, utxos[utxos.length - 1].keys[2].x],
                 [utxos[utxos.length - 1].keys[0].yBit, utxos[utxos.length - 1].keys[1].yBit, utxos[utxos.length - 1].keys[2].yBit],
                 [utxos[utxos.length - 1].amount, utxos[utxos.length - 1].mask],
-                utxos.length - 1,
-                txs.length);
+                utxos.length.sub(1).unsafeToUint64(),
+                txs.length.unsafeToUint64());
         }
         //verify bulletproof
         require(VerifyRangeProof(_bp), "bulletproof verification failed");
@@ -213,7 +213,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         addNewTransaction(_data, outputLength);
     }
 
-    function copyRingKeys(bytes memory _dest, uint256 _inOffset, uint256[] memory _inputIDs, uint256 _numRing, uint256 _ringSize) internal returns (uint256) {
+    function copyRingKeys(bytes memory _dest, uint256 _inOffset, uint64[] memory _inputIDs, uint256 _numRing, uint256 _ringSize) internal returns (uint256) {
         uint256 offset = _inOffset;
         for(uint256 loopVars0 = 0; loopVars0 < _numRing - 1; loopVars0++) {
             for(uint256 loopVars1 = 0; loopVars1 < _ringSize; loopVars1++) {
@@ -238,7 +238,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         }
     }
 
-    function computeAdditionalRingKeys(uint256[] memory _inputIDs, bytes memory fullRingCT, uint256[4] memory ringParams, uint256 _inOffset, uint256[2] memory outSum) internal returns (uint256){
+    function computeAdditionalRingKeys(uint64[] memory _inputIDs, bytes memory fullRingCT, uint256[4] memory ringParams, uint256 _inOffset, uint256[2] memory outSum) internal returns (uint256){
         uint256 fullRingCTOffSet = _inOffset;
         uint256[2] memory loopVars;
         for(loopVars[1] = 0; loopVars[1] < ringParams[1]; loopVars[1]++) {
@@ -281,7 +281,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
     *@param {_recipient} the recipient of the withdrawing transaction
     *@param {_ringSignature} ring signature that will be verified by precompiled contract
     */
-    function withdrawFunds(uint[] memory _inputIDs, //multiple rings
+    function withdrawFunds(uint64[] memory _inputIDs, //multiple rings
         uint256[] memory _outputs, //1/3 for commitments, 1/3 for stealths,, 1/3 for txpubs : only contain 1 output
         uint256 _withdrawalAmount,
         uint256[2] memory _amounts, // _amounts[0]: encrypted amount, _amounts[1]: encrypted mask
@@ -370,13 +370,13 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         utxos[utxos.length - 1].keys[2] = CompressPubKey(yBit[2] + 2, X[2]);
         utxos[utxos.length - 1].amount = _amounts[0];
         utxos[utxos.length - 1].mask = _amounts[1];
-        utxos[utxos.length - 1].txID = txs.length;
+        utxos[utxos.length - 1].txID = txs.length.unsafeToUint64();
 
         emit NewUTXO([utxos[utxos.length - 1].keys[0].x, utxos[utxos.length - 1].keys[1].x, utxos[utxos.length - 1].keys[2].x],
             [utxos[utxos.length - 1].keys[0].yBit, utxos[utxos.length - 1].keys[1].yBit, utxos[utxos.length - 1].keys[2].yBit],
             [utxos[utxos.length - 1].amount, utxos[utxos.length - 1].mask],
-            utxos.length - 1,
-            txs.length);
+            utxos.length.sub(1).unsafeToUint64(),
+            txs.length.unsafeToUint64());
         addNewTransaction(_data, 1);
     }
 
@@ -390,25 +390,25 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         txs.length = txs.length + 1;
         NewUTXOEventStruct[] memory newUTXOs = new NewUTXOEventStruct[](_numUTXO);
         for(uint i = utxos.length - _numUTXO; i < utxos.length; i++) {
-            txs[txs.length - 1].utxoIndexes.push(i);
+            txs[txs.length - 1].utxoIndexes.push(i.unsafeToUint64());
             txs[txs.length - 1].data = _data;
 
             newUTXOs[i + _numUTXO - utxos.length].Xs = [utxos[i].keys[0].x, utxos[i].keys[1].x, utxos[i].keys[2].x];
             newUTXOs[i + _numUTXO - utxos.length].YBits = [utxos[i].keys[0].yBit, utxos[i].keys[1].yBit, utxos[i].keys[2].yBit];
             newUTXOs[i + _numUTXO - utxos.length].amount = [utxos[i].amount, utxos[i].mask];
-            newUTXOs[i + _numUTXO - utxos.length].index = i;
-            newUTXOs[i + _numUTXO - utxos.length].txIndex = txs.length - 1;
+            newUTXOs[i + _numUTXO - utxos.length].index = i.unsafeToUint64();
+            newUTXOs[i + _numUTXO - utxos.length].txIndex = txs.length.sub(1).unsafeToUint64();
         }
 
         emit NewTransaction(
-            txs.length - 1, newUTXOs, _data
+            txs.length.sub(1).unsafeToUint64(), newUTXOs, _data
         );
     }
 
-    function getTransaction(uint256 _index) public view returns (uint256, NewUTXOEventStruct[] memory, byte[137] memory) {
+    function getTransaction(uint64 _index) public view returns (uint64, NewUTXOEventStruct[] memory, byte[137] memory) {
         uint256 numUTXO = txs[_index].utxoIndexes.length;
         NewUTXOEventStruct[] memory retUTXOs = new NewUTXOEventStruct[](numUTXO);
-        uint256[] storage utxoIndexes = txs[_index].utxoIndexes;
+        uint64[] storage utxoIndexes = txs[_index].utxoIndexes;
         for(uint i = 0; i < numUTXO; i++) {
             UTXO storage utxo = utxos[utxoIndexes[i]];
             retUTXOs[i].Xs = [utxo.keys[0].x, utxo.keys[1].x, utxo.keys[2].x];
@@ -421,7 +421,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         return (_index, retUTXOs, txs[_index].data);
     }
 
-    function getTransactions(uint256[] memory _indexes) public view returns (uint256[] memory, NewUTXOEventStruct[] memory, byte[] memory) {
+    function getTransactions(uint64[] memory _indexes) public view returns (uint64[] memory, NewUTXOEventStruct[] memory, byte[] memory) {
         uint256 numUTXO = 0;
         uint256 numValidTx = 0;
         uint256 utxoIterator = 0;
@@ -435,7 +435,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         for(uint i = 0; i < _indexes.length; i++) {
             if (_indexes[i] >= txs.length) break;
             uint256 txNumUTXO = txs[i].utxoIndexes.length;
-            uint256[] storage utxoIndexes = txs[i].utxoIndexes;
+            uint64[] storage utxoIndexes = txs[i].utxoIndexes;
             for(uint j = 0; j < txNumUTXO; j++) {
                 UTXO storage utxo = utxos[utxoIndexes[j]];
                 retUTXOs[utxoIterator].Xs = [utxo.keys[0].x, utxo.keys[1].x, utxo.keys[2].x];
@@ -454,7 +454,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         return (_indexes, retUTXOs, data);
     }
 
-    function getUTXO(uint256 index) public view returns (uint256[3] memory,
+    function getUTXO(uint64 index) public view returns (uint256[3] memory,
         uint8[3] memory,
         uint256[2] memory //0. encrypted amount, 1. encrypted mask
     ) {
@@ -465,7 +465,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         );
     }
 
-    function getUTXOs(uint256[] memory indexs) public view returns (RawUTXO[] memory) {
+    function getUTXOs(uint64[] memory indexs) public view returns (RawUTXO[] memory) {
         RawUTXO[] memory utxs = new RawUTXO[](indexs.length);
         // just a limit each request
         require(indexs.length < 50);
@@ -485,7 +485,7 @@ contract PrivacyCTV2 is PrivacyTRC21TOMO, RingCTVerifier, BulletProofVerifier {
         return utxs;
     }
 
-    function getTxs(uint256[] memory indexs) public view returns (Transaction[] memory) {
+    function getTxs(uint64[] memory indexs) public view returns (Transaction[] memory) {
         Transaction[] memory result_txs = new Transaction[](indexs.length);
         // just a limit each request
         require(indexs.length < 50);

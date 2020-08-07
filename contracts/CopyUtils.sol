@@ -1,4 +1,4 @@
-pragma solidity 0.5.0;
+pragma solidity ^0.5.0;
 
 library CopyUtils {
     function Copy33Bytes(bytes memory data, uint256 _start) internal view returns (bool success, byte[33] memory ret) {

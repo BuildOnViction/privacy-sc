@@ -1,4 +1,4 @@
-pragma solidity 0.5.0;
+pragma solidity ^0.5.0;
 
 contract RingCTVerifier {
     address RINGCT_PRECOMPILED = 0x000000000000000000000000000000000000001e;

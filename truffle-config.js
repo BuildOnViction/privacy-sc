@@ -46,7 +46,7 @@ module.exports = {
     //
     development: {
       provider: () => new HDWalletProvider(privateKey, config.RPC),
-      network_id: 88,
+      network_id: 89,
       gasPrice: 10000000000000, // default gas price in wei, 20 gwei in this case,
       gas: '30000000',
       websockets: true,

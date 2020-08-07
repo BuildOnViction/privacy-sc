@@ -1,4 +1,4 @@
-pragma solidity 0.5.0;
+pragma solidity ^0.5.0;
 
 contract BulletProofVerifier {
     address BP_PRECOMPILED = 0x0000000000000000000000000000000000000028;

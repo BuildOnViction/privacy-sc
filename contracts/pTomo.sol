@@ -1,8 +1,8 @@
 pragma solidity ^0.5.0;
 pragma experimental ABIEncoderV2;
-import "./PTRC21.sol";
+import "./pTRC21.sol";
 
-contract TomoP is Privacy {
+contract pTomo is Privacy {
     
     constructor (address token,
         uint256 minFee,
@@ -10,6 +10,7 @@ contract TomoP is Privacy {
         uint256 withdrawFee
     )  PTRC21(token, minFee, depositFee, withdrawFee) public {}
     
+     
     function deposit(uint _pubkeyX,
         uint _pubkeyY,
         uint _txPubKeyX,

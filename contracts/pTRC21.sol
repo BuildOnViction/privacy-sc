@@ -10,57 +10,46 @@ import "./CopyUtils.sol";
 import "./TRC21.sol";
 import "./Bytes.sol";
 
-contract AbstractTokenTRC21 {
-    function issuer() public view returns (address);
-    function name() public view returns (string memory);
-    function symbol() public view returns (string memory);
-    function decimals() public view returns (uint8);
-}
-
-contract PTRC21 is TRC21 {
+contract pTRC21 is TRC21 {
     string private _name;
     string private _symbol;
     uint8 private _decimals;
     uint8 constant PRIVACY_DECIMALS = 8;
-    uint256 private _minFee;
+    uint256 private _sendFee;
     uint256 private _depositFee;
     uint256 private _withdrawFee;
     address private _token;
 
     constructor (address token,
-        uint256 minFee,
+        string memory name, 
+        uint256 sendFee,
         uint256 depositFee,
         uint256 withdrawFee
     ) public {
         if (token != address(0)) {
-            AbstractTokenTRC21 t = AbstractTokenTRC21(token);
-            // require(t.issuer() == msg.sender);
+            ITRC21 t = ITRC21(token);
+            require(t.issuer() == msg.sender);
 
             _token = token;
-            _name =  string(abi.encodePacked("P", t.name()));
+            _name =  string(abi.encodePacked("p", t.name()));
 
             _symbol = t.symbol();
             _decimals = t.decimals();
         } else {
             // Tomo token
             _token = address(0);
-            _name = "TomoP";
-            _symbol = "TomoP";
+            _name = string(abi.encodePacked("p", name));
+            _symbol = _name;
             _decimals = 18;
         }
 
-        // change the fee correspondent to new decimal in the privacy system
-        (_minFee, _depositFee, _withdrawFee) = _calculatePrivacyFee(minFee, depositFee, withdrawFee);
-        _changeMinFee(minFee);
+        _sendFee = _toPrivacyValue(sendFee);
+        _depositFee = _toPrivacyValue(depositFee);
+        _withdrawFee = _toPrivacyValue(withdrawFee);
+
         _changeIssuer(msg.sender);
     }
 
-    /**
-     * @return reduce decimal length.
-     */
-    function _calculatePrivacyFee(uint256 minFee, uint256 depositFee, uint256 withdrawFee) internal view returns (uint256, uint256, uint256) {
-        return (_toPrivacyValue(minFee), _toPrivacyValue(depositFee), _toPrivacyValue(withdrawFee));
-    }
 
     // convert external value to privacy's
     function _toPrivacyValue(uint256 value) internal view returns (uint256) {
@@ -119,10 +108,9 @@ contract PTRC21 is TRC21 {
         return PRIVACY_DECIMALS;
     }
 
-    function setMinFee(uint256 value) public {
+    function setSendingFee(uint256 value) public {
         require(msg.sender == issuer());
-        _minFee = _toPrivacyValue(value);
-        _changeMinFee(value);
+        _sendFee = _toPrivacyValue(value);
     }
 
     function setDepositFee(uint256 value) public {
@@ -135,8 +123,8 @@ contract PTRC21 is TRC21 {
         _withdrawFee = _toPrivacyValue(value);
     }
 
-    function getMinFee() public view returns (uint256) {
-        return _minFee;
+    function getSendFee() public view returns (uint256) {
+        return _sendFee;
     }
 
     function getDepositFee() public view returns (uint256) {
@@ -148,7 +136,7 @@ contract PTRC21 is TRC21 {
     }
 }
 
-contract Privacy is PTRC21, RingCTVerifier, BulletProofVerifier {
+contract Privacy is pTRC21{
     using SafeMath for uint256;
     using UnitUtils for uint256;
 
@@ -272,12 +260,12 @@ contract Privacy is PTRC21, RingCTVerifier, BulletProofVerifier {
         ringParams[0] = CopyUtils.ConvertBytesToUint(_ringSignature, 0, 8);    //numRing
         ringParams[1] = CopyUtils.ConvertBytesToUint(_ringSignature, 8, 8);    //ringSize
         require(_inputIDs.length % (ringParams[1]) == 0);
-        require(ComputeSignatureSize(ringParams[0], ringParams[1]) == _ringSignature.length + ringParams[0]*ringParams[1]*33);
+        require(RingCTVerifier.ComputeSignatureSize(ringParams[0], ringParams[1]) == _ringSignature.length + ringParams[0]*ringParams[1]*33);
 
         ringParams[2] = 80 + ringParams[0] * ringParams[1] *32;
         ringParams[3] = ringParams[2];//ringParams[2] + ringParams[0] * ringParams[1] * 33;
 
-        bytes memory fullRingCT = new bytes(ComputeSignatureSize(ringParams[0], ringParams[1]));
+        bytes memory fullRingCT = new bytes(RingCTVerifier.ComputeSignatureSize(ringParams[0], ringParams[1]));
         uint256 fullRingCTOffSet = 0;
         //testing: copy entire _ring to fullRingCT
         Bytes.copySubstr(fullRingCT, 0, _ringSignature, 0, ringParams[2]);
@@ -293,7 +281,7 @@ contract Privacy is PTRC21, RingCTVerifier, BulletProofVerifier {
         //compute sum of outputs
         uint256[2] memory outSum;
         //adding fee to sum of output commitments
-        (outSum[0], outSum[1]) = Secp256k1.mulWithHToPoint(getMinFee());
+        (outSum[0], outSum[1]) = Secp256k1.mulWithHToPoint(getSendFee());
         for (uint256 i = 0; i < _outputs.length.div(6); i++) {
             (outSum[0], outSum[1]) = Secp256k1.add(outSum[0], outSum[1], _outputs[i*2], _outputs[i*2+1]);
         }
@@ -306,8 +294,8 @@ contract Privacy is PTRC21, RingCTVerifier, BulletProofVerifier {
         verifyKeyImageSpent(ringParams[0], _ringSignature, ringParams[3]);
 
         //verify ringSignature
-        require(VerifyRingCT(fullRingCT), "signature failed");
-        transferFee(getMinFee());
+        require(RingCTVerifier.VerifyRingCT(fullRingCT), "signature failed");
+        transferFee(getSendFee());
 
         //create output UTXOs
         uint256 outputLength = _outputs.length.div(6);
@@ -337,7 +325,7 @@ contract Privacy is PTRC21, RingCTVerifier, BulletProofVerifier {
                 txs.length);
         }
         //verify bulletproof
-        require(VerifyRangeProof(_bp), "bulletproof verification failed");
+        require(BulletProofVerifier.VerifyRangeProof(_bp), "bulletproof verification failed");
 
         addNewTransaction(_data, outputLength);
     }
@@ -438,7 +426,7 @@ contract Privacy is PTRC21, RingCTVerifier, BulletProofVerifier {
 
         require(_inputIDs.length % (ringParams[1]) == 0);
 
-        require(ComputeSignatureSize(ringParams[0], ringParams[1]) == _ringSignature.length + ringParams[0]*ringParams[1]*33);
+        require(RingCTVerifier.ComputeSignatureSize(ringParams[0], ringParams[1]) == _ringSignature.length + ringParams[0]*ringParams[1]*33);
 
         ringParams[2] = 80 + ringParams[0] * ringParams[1] *32;
         ringParams[3] = ringParams[2];
@@ -446,7 +434,7 @@ contract Privacy is PTRC21, RingCTVerifier, BulletProofVerifier {
         //verify key image spend
         verifyKeyImageSpent(ringParams[0], _ringSignature, ringParams[3]);
 
-        bytes memory fullRingCT = new bytes(ComputeSignatureSize(ringParams[0], ringParams[1]));
+        bytes memory fullRingCT = new bytes(RingCTVerifier.ComputeSignatureSize(ringParams[0], ringParams[1]));
         uint256 fullRingCTOffSet = 0;
         //testing: copy entire _ring to fullRingCT
         Bytes.copySubstr(fullRingCT, 0, _ringSignature, 0, ringParams[2]);
@@ -473,7 +461,7 @@ contract Privacy is PTRC21, RingCTVerifier, BulletProofVerifier {
         Bytes.copySubstr(fullRingCT, fullRingCTOffSet, _ringSignature, ringParams[3], ringParams[0]*33);
 
         //verify ringSignature
-        require(VerifyRingCT(fullRingCT), "signature failed");
+        require(RingCTVerifier.VerifyRingCT(fullRingCT), "signature failed");
 
         //transfer
         // _recipient.transfer(_withdrawalAmount);
@@ -488,7 +476,7 @@ contract Privacy is PTRC21, RingCTVerifier, BulletProofVerifier {
         //overwrite bulletproof range proof with commitment
         Bytes.copyTo(yBit[0] + 2, X[0], _bp, 4);
         //verify bulletproof
-        require(VerifyRangeProof(_bp), "bulletproof verification failed");
+        require(BulletProofVerifier.VerifyRangeProof(_bp), "bulletproof verification failed");
 
         (yBit[1], X[1]) = Secp256k1.compressXY(_outputs[2], _outputs[3]);
 

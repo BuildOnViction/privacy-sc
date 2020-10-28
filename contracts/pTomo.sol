@@ -5,10 +5,11 @@ import "./pTRC21.sol";
 contract pTomo is Privacy {
     
     constructor (address token,
+        string memory name,
         uint256 minFee,
         uint256 depositFee,
         uint256 withdrawFee
-    )  PTRC21(token, minFee, depositFee, withdrawFee) public {}
+    )  pTRC21(token, name, minFee, depositFee, withdrawFee) public {}
     
      
     function deposit(uint _pubkeyX,

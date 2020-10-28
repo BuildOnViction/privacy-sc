@@ -10,6 +10,13 @@ import "./CopyUtils.sol";
 import "./TRC21.sol";
 import "./Bytes.sol";
 
+contract AbstractTokenTRC21 {
+    function issuer() public view returns (address);
+    function name() public view returns (string memory);
+    function symbol() public view returns (string memory);
+    function decimals() public view returns (uint8);
+}
+
 contract pTRC21 is TRC21 {
     string private _name;
     string private _symbol;
@@ -27,7 +34,7 @@ contract pTRC21 is TRC21 {
         uint256 withdrawFee
     ) public {
         if (token != address(0)) {
-            ITRC21 t = ITRC21(token);
+            AbstractTokenTRC21 t = AbstractTokenTRC21(token);
             require(t.issuer() == msg.sender);
 
             _token = token;

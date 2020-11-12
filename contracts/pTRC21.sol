@@ -28,7 +28,7 @@ contract pTRC21 is TRC21 {
     ) public {
         if (token != address(0)) {
             ITRC21 t = ITRC21(token);
-            require(t.issuer() == msg.sender);
+            //require(t.issuer() == msg.sender);
 
             _token = token;
             _name =  string(abi.encodePacked("p", t.name()));
@@ -380,7 +380,6 @@ contract Privacy is pTRC21{
                 }
             }
 
-            //(point[2], point[3]) = Secp256k1.decompressXY(uint8(pk[0])%2, convertBytes33ToUint(pk,  1, 32));
             (point[2], point[3]) = Secp256k1.sub(point[0], point[1], outSum[0], outSum[1]);
             (uint8 yBit, uint256 compressX) = Secp256k1.compressXY(point[2], point[3]);
             Bytes.copyTo(yBit + 2, compressX, fullRingCT, fullRingCTOffSet);
@@ -553,6 +552,21 @@ contract Privacy is pTRC21{
 
         return (_indexes, retUTXOs, data);
     }
+    
+    function getUTXO(uint256 index) public view returns (uint256[3] memory,
+        uint8[3] memory,
+        uint256[2] memory, //0. encrypted amount, 1. encrypted mask
+        uint256,
+        uint256
+    ) {
+        return (
+            [utxos[index].keys[0].x, utxos[index].keys[1].x, utxos[index].keys[2].x],
+            [utxos[index].keys[0].yBit, utxos[index].keys[1].yBit, utxos[index].keys[2].yBit],
+            [utxos[index].amount,utxos[index].mask],
+            index,
+            utxos[index].txID
+        );
+    }
 
     function getUTXOs(uint256[] memory indexs) public view returns (RawUTXO[] memory) {
         RawUTXO[] memory utxs = new RawUTXO[](indexs.length);
@@ -608,21 +622,21 @@ contract Privacy is pTRC21{
         return keyImagesMapping[kiHash];
     }
 
-        function areSpent(bytes memory keyImages) public view returns (bool[] memory) {
-            require(keyImages.length < 200 * 33);
+    function areSpent(bytes memory keyImages) public view returns (bool[] memory) {
+        require(keyImages.length < 200 * 33);
 
-            uint256 numberKeyImage = keyImages.length / 33;
-            bool[] memory result = new bool[](numberKeyImage);
+        uint256 numberKeyImage = keyImages.length / 33;
+        bool[] memory result = new bool[](numberKeyImage);
 
-            for(uint256 i = 0; i < numberKeyImage; i++) {
-                (bool success, byte[33] memory ki) = CopyUtils.Copy33Bytes(keyImages, i*33);
-                require(success);
-                uint256 kiHash = CopyUtils.BytesToUint(keccak256(abi.encodePacked(ki)));
-                result[i] = keyImagesMapping[kiHash];
-            }
-
-            return result;
+        for(uint256 i = 0; i < numberKeyImage; i++) {
+            (bool success, byte[33] memory ki) = CopyUtils.Copy33Bytes(keyImages, i*33);
+            require(success);
+            uint256 kiHash = CopyUtils.BytesToUint(keccak256(abi.encodePacked(ki)));
+            result[i] = keyImagesMapping[kiHash];
         }
+
+        return result;
+    }
 
     //dont receive any money via default callback
     function () external payable {

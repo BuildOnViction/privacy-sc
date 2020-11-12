@@ -1,4 +1,4 @@
-var PrivacyContract = artifacts.require("PrivacyCTV2");
+var PrivacyContract = artifacts.require("pTomo");
 // var RingCTVerifier = artifacts.require("RingCTVerifier");
 var Secp256k1 = artifacts.require("Secp256k1");
 var SafeMath = artifacts.require("SafeMath");
@@ -21,7 +21,6 @@ const provider = new HDWalletProvider(privateKey, ENV.RPC);
 const web3 = new Web3(provider);
 
 module.exports = function(deployer) {
-    // deployer.deploy(RingCTVerifier).then((result) => {});
     deployer.deploy(PrivacyContract).then(async(result) => {
       console.log("result.address ", result.address);
       const issuerContract = await new web3.eth.Contract(

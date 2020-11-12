@@ -3,11 +3,12 @@ pragma experimental ABIEncoderV2;
 import "./pTRC21.sol";
 
 contract pToken is Privacy {
-    constructor (address token,
-        uint256 minFee,
+     constructor (address token,
+        string memory name,
+        uint256 sendingFee,
         uint256 depositFee,
         uint256 withdrawFee
-    )  PTRC21(token, minFee, depositFee, withdrawFee) public {}
+    )  pTRC21(token, name, sendingFee, depositFee, withdrawFee) public {}
     
     function deposit(
         uint256 value,
@@ -36,10 +37,10 @@ contract pToken is Privacy {
                 _data);
     }
 
-function transferFee(uint256 fee) internal {
+    function transferFee(uint256 fee) internal {
         uint256 _externalValue = _toExternalValue(fee);
         ITRC21 _token = ITRC21(token());
-        uint256 tokenFee = _token.estimateFee(_externalValue)
+        uint256 tokenFee = _token.estimateFee(_externalValue);
         require(_externalValue >= tokenFee, "WITHDRAW_VALUE_MUST_BE_GREATER_THAN_TOKEN_FEE");
         _token.transfer(issuer(), _externalValue - tokenFee);
         emit TransactionFee(issuer(), _externalValue - tokenFee);
@@ -59,4 +60,5 @@ function transferFee(uint256 fee) internal {
         ITRC21 _token = ITRC21(token());
         _token.transfer(to, amount);
     }
+    
 }

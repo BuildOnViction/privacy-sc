@@ -11,6 +11,12 @@ interface ITRC21 {
 
     function issuer() external view returns (address payable);
 
+    function name() external view returns (string memory);
+
+    function symbol() external view returns (string memory);
+
+    function decimals() external view returns (uint8);
+
     function estimateFee(uint256 value) external view returns (uint256);
 
     function allowance(address owner, address spender) external view returns (uint256);

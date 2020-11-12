@@ -21,7 +21,13 @@ const provider = new HDWalletProvider(privateKey, ENV.RPC);
 const web3 = new Web3(provider);
 
 module.exports = function(deployer) {
-    deployer.deploy(PrivacyContract).then(async(result) => {
+    deployer.deploy(PrivacyContract,
+      "0x0000000000000000000000000000000000000000",
+      "TOMO",
+      1000000000000000,
+      1000000000000000,
+      1000000000000000
+    ).then(async(result) => {
       console.log("result.address ", result.address);
       const issuerContract = await new web3.eth.Contract(
           ISSUER_ABI, issuer_address

@@ -7,6 +7,7 @@ contract pTomo is Privacy {
     address[] public earlyDepositers;
     uint public MIN_EARLY_DEPOSIT;
     uint public MAX_EARLY_DEPOSITER;
+    uint public START_DEPOSITING_BLOCK;
     event Activated();
     event NewDeposit(address depositer, uint256 amount);
     
@@ -21,10 +22,12 @@ contract pTomo is Privacy {
         uint256 depositFee,
         uint256 withdrawFee,
         uint256 minEarlyDeposit,
-        uint256 maxEarlyDepositer
+        uint256 maxEarlyDepositer,
+        uint256 startBlock
     )  pTRC21(token, name, sendingFee, depositFee, withdrawFee) public {
         MIN_EARLY_DEPOSIT = minEarlyDeposit;
         MAX_EARLY_DEPOSITER = maxEarlyDepositer;
+        START_DEPOSITING_BLOCK = startBlock;
     }
     
     function deposit(
@@ -37,6 +40,8 @@ contract pTomo is Privacy {
         uint256 _amount,
         uint256 _encodedMask,
         byte[137] memory _data) public payable {
+            require(block.number >= START_DEPOSITING_BLOCK);
+
             // convert deposit value to right decimals
             uint256 _value = _toPrivacyValue(msg.value);
             require(_value > getDepositFee(), "deposit amount must be greater than deposit fee");
